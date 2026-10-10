@@ -55,49 +55,7 @@ nav {
             flex: 1;
             flex-direction: column;
         }
-
-        /* Styling Jadwal & Antrian */
-.schedule-section {
-    padding: 15px 20px;
-    background: #f8f9fa;
-    border-bottom: 1px solid #ddd;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 13px;
-}
-.queue-badge {
-    background-color: #eef4ff;
-    color: #0066cc;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-weight: bold;
-    border: 1px solid #d0e1fd;
-}
-.schedule-info span {
-    display: block;
-    color: #555;
-    margin-bottom: 2px;
-}
-.schedule-info strong {
-    color: #333;
-}
-
-.chat-placeholder {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: #888;
-            text-align: center;
-            padding: 20px;
-        }
-        .chat-active-area {
-            display: none;
-            flex: 1;
-            flex-direction: column;
-        }
+        
 
 /* Layout Utama */
 .container {
