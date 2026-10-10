@@ -9,21 +9,21 @@
     href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;400;500;600;700&display=swap" rel="stylesheet"
     />
     <script src="https://unpkg.com/feather-icons"></script>
-    <link rel="stylesheet" href="css/style.css" />
+     <link rel="stylesheet" href="{{ asset('CSS/style.css') }}" />
 </head>
 <body class="body-page">
 <nav class="navbar">
       <a href="#" class="navbar-logo">TechnoMedic.</a>
 
       <div class="navbar-nav">
-        <a href="#home">Beranda</a>
-        <a href="#about">Jadwal & Antrean</a>
-        <a href="#menu">Pantau Keluarga</a>
-        <a href="#contact">Telekonsultasi</a>
+        <a href={{ url('/home-page') }}>Beranda</a>
+        <a href="{{ url('/jadwal') }}">Jadwal & Antrean</a>
+        <a href="{{ url('/pantau') }}">Pantau Keluarga</a>
+        <a href="{{ url('/konsultasi') }}">Telekonsultasi</a>
       </div>
       <div class="nav-kanan">
         <div class="profil-menu">
-            <img src="img/profil-img.png" alt="Profil User" class="profil-icon">
+            <img src="{{ asset('img/profil-img.png') }}" alt="Profil User" class="profil-icon">
         </div>
       </div>
     </nav>
@@ -38,7 +38,7 @@
                      <a href="#jadwal" class="btn">Ambil Antrian Sekarang</a>
             </div>
             <div class="content-img">
-                <img src="img/hero.png" alt="content-img-hero">
+                <img src="{{ asset('img/hero.png') }}" alt="content-img-hero">
             </div>
 
         </section>

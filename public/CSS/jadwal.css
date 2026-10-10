@@ -1,0 +1,208 @@
+/* Reset & Styling Dasar */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+}
+body {
+    background-color: #f4f7f6;
+    color: #333;
+}
+
+/* Navbar */
+nav {
+    background-color: #ffffff;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+}
+.nav-brand {
+    font-size: 20px;
+    font-weight: bold;
+    color: #0066cc;
+}
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    font-size: 14px;
+}
+.navbar{
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 0.6rem 3%;
+background-color: #2980b9;
+position: fixed;
+border-bottom-left-radius: 30px;
+border-bottom-right-radius: 30px;
+top: 0;
+left: 0;
+right: 0;
+z-index: 10px;
+}
+
+.navbar .navbar-logo{
+font-size: 1.7rem;
+font-weight: 700;
+color: #ffffff;
+}
+
+.navbar .navbar-nav a{
+color: #fff;
+display: inline-block;
+font-size: 1.2rem;
+margin: 0 1rem;
+text-decoration: none;
+}
+
+.navbar .navbar-nav a:hover {
+  color: #4cb7ff;
+}
+
+.navbar .navbar-nav a::after {
+  content: "";
+  display: block;
+  padding-bottom: 0.5rem;
+  border-bottom: 0.1rem solid #4cb7ff;
+  transform: scaleX(0);
+  transition: 0.2s linear;
+}
+
+.navbar .navbar-nav a:hover::after {
+  transform: scaleX(0.7);
+}
+
+.nav-kanan{
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.profil-icon{
+width: 60px;
+height: 60px;
+border-radius: 50%; 
+object-fit: cover;
+border: 2px solid #ffffff3b;
+background-color: #ffffff; 
+}
+.btn-logout {
+    background: none;
+    border: none;
+    color: #cc0000;
+    cursor: pointer;
+    font-size: 14px;
+}
+.btn-logout:hover {
+    text-decoration: underline;
+}
+
+/* Container Utama */
+.container {
+    max-width: 1000px;
+    margin: 30px auto;
+    margin-top: 100px;
+    padding: 0 15px;
+}
+
+.page-title {
+    margin-bottom: 20px;
+    font-size: 22px;
+    color: #333;
+}
+
+/* Grid Kartu Jadwal */
+.schedule-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.schedule-card {
+    background: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.schedule-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 12px;
+}
+
+.doctor-avatar {
+    width: 45px;
+    height: 45px;
+    background-color: #d0e1fd;
+    color: #0066cc;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 15px;
+}
+
+.doctor-info h4 {
+    font-size: 15px;
+    color: #333;
+}
+.doctor-info p {
+    font-size: 13px;
+    color: #666;
+}
+
+/* Detail Jadwal & Antrian */
+.schedule-body {
+    font-size: 14px;
+    color: #444;
+    margin-bottom: 20px;
+}
+.schedule-body p {
+    margin-bottom: 8px;
+}
+
+.queue-box {
+    background-color: #eef4ff;
+    border: 1px solid #d0e1fd;
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+    margin-bottom: 15px;
+}
+.queue-box span {
+    display: block;
+    font-size: 12px;
+    color: #555;
+}
+.queue-box h3 {
+    font-size: 18px;
+    color: #0066cc;
+    margin-top: 4px;
+}
+
+/* Tombol Aksi */
+.btn-action {
+    display: block;
+    width: 100%;
+    background-color: #0066cc;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+.btn-action:hover {
+    background-color: #0052a3;
+}

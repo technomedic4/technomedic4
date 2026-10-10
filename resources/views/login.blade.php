@@ -9,20 +9,22 @@
     href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="{{ asset('CSS/style.css') }}" />
   </head>
 
   <body class="login">
 
     <div class="split">
     <div class="img-box">
-      <img src="img/img-medis.jpg" alt="img-medis">
+      <img src="{{ asset('img/img-medis.jpg') }}" alt="img-medis">
     </div>
 <div class="login-cont">
       <div class="login-card">
         <h2>Login Akun</h2>
       
-    <form action="proses-login" method="post">
+    <form action="{{ url('/login') }}" method="post">
+      @csrf
+
       <div class="input">
         <label for="email">Email</label>
         <input type="email" id="email" name="email" placeholder="Masukkan email " required>
@@ -35,7 +37,7 @@
       <button type="submit" class="btn-login">Masuk</button>
 
       <div class="auto-link">
-        <P>Belum punya akun? <a href="registrasi.html">Daftar Disini</a></P>
+        <P>Belum punya akun? <a href="{{ url('/registrasi') }}">Daftar Disini</a></P>
       </div>
       </form>
       </div>

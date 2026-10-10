@@ -1,0 +1,310 @@
+/* Reset & Styling Dasar */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+}
+body {
+    background-color: #f4f7f6;
+    color: #333;
+}
+
+/* Navbar */
+nav {
+    background-color: #ffffff;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+}
+.nav-brand {
+    font-size: 20px;
+    font-weight: bold;
+    color: #0066cc;
+}
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    font-size: 14px;
+}
+.btn-logout {
+    background: none;
+    border: none;
+    color: #cc0000;
+    cursor: pointer;
+    font-size: 14px;
+}
+.btn-logout:hover {
+    text-decoration: underline;
+}
+.chat-placeholder {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            text-align: center;
+            padding: 20px;
+        }
+        .chat-active-area {
+            display: none; /* Sembunyikan area chat sebelum dokter dipilih */
+            flex: 1;
+            flex-direction: column;
+        }
+
+        /* Styling Jadwal & Antrian */
+.schedule-section {
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+}
+.queue-badge {
+    background-color: #eef4ff;
+    color: #0066cc;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: bold;
+    border: 1px solid #d0e1fd;
+}
+.schedule-info span {
+    display: block;
+    color: #555;
+    margin-bottom: 2px;
+}
+.schedule-info strong {
+    color: #333;
+}
+
+.chat-placeholder {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            text-align: center;
+            padding: 20px;
+        }
+        .chat-active-area {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+        }
+
+/* Layout Utama */
+.container {
+    max-width: 1200px;
+    margin: 20px auto;
+    margin-top: 100px;
+    padding: 0 15px;
+    display: flex;
+    gap: 20px;
+    height: 80vh;
+}
+
+/* Sidebar Daftar Dokter */
+.sidebar {
+    width: 30%;
+    background: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    overflow-y: auto;
+}
+.sidebar h2 {
+    font-size: 18px;
+    margin-bottom: 15px;
+    color: #333;
+}
+.doctor-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-bottom: 8px;
+}
+.doctor-card:hover {
+    background-color: #eef4ff;
+}
+.doctor-avatar {
+    width: 40px;
+    height: 40px;
+    background-color: #d0e1fd;
+    color: #0066cc;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+}
+.doctor-info h4 {
+    font-size: 14px;
+    color: #333;
+}
+.doctor-info p {
+    font-size: 12px;
+    color: #666;
+}
+
+/* Area Chat Utama */
+.chat-container {
+    width: 70%;
+    background: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+}
+.chat-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.chat-header-info h3 {
+    font-size: 16px;
+    color: #333;
+}
+.status-online {
+    font-size: 12px;
+    color: #28a745;
+}
+
+/* Ruang Pesan */
+.chat-messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background-color: #fafafa;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+.message {
+    max-width: 60%;
+    padding: 12px 15px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+.message.doctor {
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+    align-self: flex-start;
+    color: #333;
+}
+.message.patient {
+    background-color: #0066cc;
+    color: #ffffff;
+    align-self: flex-end;
+}
+
+/* Form Kirim Pesan */
+.chat-input-area {
+    padding: 15px 20px;
+    border-top: 1px solid #ddd;
+    background: #ffffff;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+.chat-form {
+    display: flex;
+    gap: 10px;
+}
+.chat-input {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+}
+.chat-input:focus {
+    border-color: #0066cc;
+}
+.navbar{
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 0.6rem 3%;
+background-color: #2980b9;
+position: fixed;
+border-bottom-left-radius: 30px;
+border-bottom-right-radius: 30px;
+top: 0;
+left: 0;
+right: 0;
+z-index: 10px;
+}
+
+.navbar .navbar-logo{
+font-size: 1.7rem;
+font-weight: 700;
+color: #ffffff;
+}
+
+.navbar .navbar-nav a{
+color: #fff;
+display: inline-block;
+font-size: 1.2rem;
+margin: 0 1rem;
+text-decoration: none;
+}
+
+.navbar .navbar-nav a:hover {
+  color: #4cb7ff;
+}
+
+.navbar .navbar-nav a::after {
+  content: "";
+  display: block;
+  padding-bottom: 0.5rem;
+  border-bottom: 0.1rem solid #4cb7ff;
+  transform: scaleX(0);
+  transition: 0.2s linear;
+}
+
+.navbar .navbar-nav a:hover::after {
+  transform: scaleX(0.7);
+}
+
+.nav-kanan{
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.profil-icon{
+width: 60px;
+height: 60px;
+border-radius: 50%; 
+object-fit: cover;
+border: 2px solid #ffffff3b;
+background-color: #ffffff; 
+}
+.btn-send {
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn-send:hover {
+    background-color: #0052a3;
+}
