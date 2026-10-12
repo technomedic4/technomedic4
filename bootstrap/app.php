@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Middleware\EnsureHospitalStaff;
+use App\Http\Middleware\EnsurePatient;
+use App\Http\Middleware\EnsureStaffRole;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,7 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'staff' => EnsureHospitalStaff::class,
+            'patient' => EnsurePatient::class,
+            'staff-role' => EnsureStaffRole::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -1,75 +1,61 @@
 <?php
 
-
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\User;
-use Illuminate\Support\Facades\Hash;
+use App\Support\HospitalStaffRole;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
-    // Tampilkan halaman registrasi
-    public function showRegister()
+    public function showLogin(): View
     {
-        return view('registrasi');
+        return view('staff.login');
     }
 
-    public function register(Request $request)
+    public function showPatientLogin(): View
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:150',
-            'email' => 'required|string|email|max:100|unique:users,email',
-            'phone_number' => 'required|string|max:20|unique:users,phone_number',
-            'gender' => 'required|in:L,P',
-            'birth_date' => 'required|date|before_or_equal:today',
-            'password' => 'required|string|min:6',
-        ]);
-
-        $patientRoleId = DB::table('roles')->where('role_name', 'Pasien')->value('id');
-
-        if (!$patientRoleId) {
-            return back()->withInput()->withErrors([
-                'role' => 'Role Pasien belum tersedia. Hubungi administrator.',
-            ]);
-        }
-
-        DB::transaction(function () use ($validated, $patientRoleId) {
-            $user = User::create([
-                'email' => $validated['email'],
-                'phone_number' => $validated['phone_number'],
-                'password_hash' => Hash::make($validated['password']),
-                'role_id' => 1,
-                'is_active' => 1,
-            ]);
-
-            DB::table('patient_profiles')->insert([
-                'user_id' => $user->id,
-                'full_name' => $validated['name'],
-                'gender' => $validated['gender'],
-                'birth_date' => $validated['birth_date'],
-            ]);
-        });
-
-        return redirect(url('/login'))->with('success', 'Registrasi berhasil! Silakan login.');
+        return view('patient.login');
     }
 
-
-    public function showLogin()
+    public function login(Request $request): RedirectResponse
     {
-        return view('login');
+        return $this->authenticate(
+            $request,
+            HospitalStaffRole::values(),
+            route('staff.dashboard'),
+            'Email atau password salah, atau akun tidak memiliki akses portal staf.',
+        );
     }
 
-  
-    public function login(Request $request)
+    public function patientLogin(Request $request): RedirectResponse
     {
+        return $this->authenticate(
+            $request,
+            ['Pasien'],
+            route('patient.teleconsultations.index'),
+            'Email atau password salah, atau akun tidak memiliki akses portal pasien.',
+        );
+    }
+
+    /**
+     * @param list<string> $allowedRoles
+     */
+    private function authenticate(
+        Request $request,
+        array $allowedRoles,
+        string $redirectRoute,
+        string $errorMessage,
+    ): RedirectResponse {
         $credentials = $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
-
         $user = User::where('email', $credentials['email'])->first();
         $storedPassword = $user?->getAuthPassword();
         $passwordInfo = $storedPassword ? password_get_info($storedPassword) : ['algoName' => 'unknown'];
@@ -80,7 +66,20 @@ class AuthController extends Controller
             default => password_verify($credentials['password'], $storedPassword),
         };
 
-        if ($user && $passwordMatches) {
+        $roleName = $user
+            ? DB::table('roles')->where('id', $user->role_id)->value('role_name')
+            : null;
+
+        $hasPatientProfile = $roleName !== 'Pasien'
+            || DB::table('patient_profiles')->where('user_id', $user?->id)->exists();
+
+        if (
+            $user
+            && $passwordMatches
+            && $user->is_active
+            && $hasPatientProfile
+            && in_array($roleName, $allowedRoles, true)
+        ) {
             if ($passwordInfo['algoName'] !== 'bcrypt') {
                 $user->password_hash = Hash::make($credentials['password']);
                 $user->save();
@@ -89,13 +88,26 @@ class AuthController extends Controller
             Auth::login($user);
             $request->session()->regenerate();
 
-            // Arahkan ke halaman dashboard atau beranda setelah berhasil login
-            return redirect()->intended('/home-page')->with('success', 'Berhasil login!');
+            return redirect()->intended($redirectRoute);
         }
 
-        // 3. Jika gagal, kembalikan ke halaman login dengan pesan error
         return back()->withErrors([
-            'email' => 'Email atau password salah.',
+            'email' => $errorMessage,
         ])->onlyInput('email');
+    }
+
+    public function logout(Request $request): RedirectResponse
+    {
+        $roleName = DB::table('roles')
+            ->where('id', $request->user()->role_id)
+            ->value('role_name');
+
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        $loginRoute = $roleName === 'Pasien' ? 'patient.login' : 'login';
+
+        return redirect()->route($loginRoute)->with('success', 'Anda berhasil keluar.');
     }
 }
