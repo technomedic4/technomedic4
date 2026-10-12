@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>technnomedic4</title>
+    <title>TechnoMedic</title>
 
     <link
     href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;400;500;600;700&display=swap" rel="stylesheet"
@@ -13,10 +13,10 @@
 </head>
 <body class="body-page">
 <nav class="navbar">
-      <a href="#" class="navbar-logo">TechnoMedic.</a>
+      <a href="{{ url('/home-page') }}" class="navbar-logo">TechnoMedic.</a>
 
       <div class="navbar-nav">
-        <a href={{ url('/home-page') }}>Beranda</a>
+        <a href="{{ url('/home-page') }}">Beranda</a>
         <a href="{{ url('/jadwal') }}">Jadwal & Antrean</a>
         <a href="{{ url('/pantau') }}">Pantau Keluarga</a>
         <a href="{{ url('/konsultasi') }}">Telekonsultasi</a>
@@ -31,11 +31,9 @@
     <main class="home-cont">
         <section class="page" id="beranda">
             <div class="content">
-                <h1>Hello User..</h1>
-                <p>Selamat datang di Technomedic. Akses jadwal dokter,<br>
-                    pantau rawat inap keluarga,
-                     dan konsultasi dari rumah dengan mudah.</p>
-                     <a href="#jadwal" class="btn">Ambil Antrian Sekarang</a>
+                <h1>Hello {{ $userName ?: 'User' }}..</h1>
+                <p>Selamat datang di Technomedic. Akses jadwal dokter, pantau rawat inap keluarga, dan konsultasi dari rumah dengan mudah.</p>
+                <a href="{{ url('/jadwal') }}" class="btn">Ambil Antrian Sekarang</a>
             </div>
             <div class="content-img">
                 <img src="{{ asset('img/hero.png') }}" alt="content-img-hero">
