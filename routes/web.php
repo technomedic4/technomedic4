@@ -2,7 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
-use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 // home Page
 // Home Page
@@ -11,7 +12,11 @@ Route::get('/', function () {
 });
 
 Route::get('/home-page', function () {
-    return view('home-page');
+    $userName = Auth::check()
+        ? DB::table('patient_profiles')->where('user_id', Auth::id())->value('full_name')
+        : null;
+
+    return view('home-page', ['userName' => $userName]);
 });
 
 // Login
@@ -40,4 +45,3 @@ Route::get('/pantau', function () {
 Route::get('/jadwal', function () {
     return view('jadwal');
 });
-
