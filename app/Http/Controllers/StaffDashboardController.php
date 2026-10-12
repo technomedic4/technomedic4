@@ -1,0 +1,130 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Support\HospitalStaffRole;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class StaffDashboardController extends Controller
+{
+    public function __invoke(Request $request): View
+    {
+        $user = $request->user();
+        $roleName = DB::table('roles')->where('id', $user->role_id)->value('role_name');
+        $role = HospitalStaffRole::tryFrom((string) $roleName);
+
+        if ($role === null) {
+            abort(403, 'Role akun tidak dikenali.');
+        }
+
+        $doctorId = null;
+
+        if ($role === HospitalStaffRole::Doctor) {
+            $doctorId = DB::table('doctors')->where('user_id', $user->id)->value('id');
+
+            if ($doctorId === null) {
+                abort(403, 'Akun dokter belum terhubung dengan profil dokter rumah sakit.');
+            }
+        }
+
+        $appointmentsQuery = DB::table('appointments as appointments')
+            ->join('doctor_schedules as schedules', 'schedules.id', '=', 'appointments.doctor_schedule_id')
+            ->join('doctors as doctors', 'doctors.id', '=', 'schedules.doctor_id')
+            ->whereDate('appointments.appointment_date', now()->toDateString());
+
+        if ($doctorId !== null) {
+            $appointmentsQuery->where('doctors.id', $doctorId);
+        }
+
+        if ($role === HospitalStaffRole::Finance) {
+            return view('staff.dashboard', [
+                'appointments' => collect(),
+                'careUpdates' => collect(),
+                'dateLabel' => now()->locale('id')->translatedFormat('l, d F Y'),
+                'stats' => [],
+                'roleLabel' => $role->value,
+                'userName' => Str::before($user->email, '@'),
+                'unavailableModule' => 'Modul tagihan belum tersedia pada database. Data keuangan belum dapat ditampilkan.',
+            ]);
+        }
+
+        $stats = [
+            [
+                'label' => 'Jadwal hari ini',
+                'value' => (clone $appointmentsQuery)->count('appointments.id'),
+                'description' => $role === HospitalStaffRole::Doctor ? 'Pasien terdaftar pada jadwal Anda' : 'Seluruh pendaftaran hari ini',
+            ],
+            [
+                'label' => 'Menunggu',
+                'value' => (clone $appointmentsQuery)
+                    ->whereIn('appointments.status', ['Pending', 'Confirmed'])
+                    ->count('appointments.id'),
+                'description' => 'Menunggu atau telah dikonfirmasi',
+            ],
+            [
+                'label' => 'Sudah check-in',
+                'value' => (clone $appointmentsQuery)
+                    ->where('appointments.status', 'Checked-In')
+                    ->count('appointments.id'),
+                'description' => 'Pasien hadir di rumah sakit',
+            ],
+            [
+                'label' => 'Selesai',
+                'value' => (clone $appointmentsQuery)
+                    ->where('appointments.status', 'Completed')
+                    ->count('appointments.id'),
+                'description' => 'Kunjungan selesai hari ini',
+            ],
+        ];
+
+        $appointments = collect();
+        $careUpdates = collect();
+
+        if ($role === HospitalStaffRole::Nurse) {
+            $careUpdates = DB::table('patient_care_updates as updates')
+                ->join('patient_profiles as patients', 'patients.id', '=', 'updates.patient_id')
+                ->select([
+                    'patients.full_name as patient_name',
+                    'updates.update_status',
+                    'updates.notes',
+                    'updates.created_at',
+                ])
+                ->orderByDesc('updates.created_at')
+                ->limit(8)
+                ->get();
+        } else {
+            $appointments = (clone $appointmentsQuery)
+                ->join('patient_profiles as patients', 'patients.id', '=', 'appointments.patient_id')
+                ->join('departments', 'departments.id', '=', 'doctors.department_id')
+                ->join('doctor_schedules as appointment_schedules', 'appointment_schedules.id', '=', 'appointments.doctor_schedule_id')
+                ->select([
+                    'appointments.booking_code',
+                    'appointments.queue_number',
+                    'appointments.appointment_date',
+                    'appointments.status',
+                    'patients.full_name as patient_name',
+                    'doctors.full_name as doctor_name',
+                    'departments.name as department_name',
+                    'schedules.start_time',
+                ])
+                ->orderBy('appointments.queue_number')
+                ->limit(8)
+                ->get();
+        }
+
+        return view('staff.dashboard', [
+            'appointments' => $appointments,
+            'careUpdates' => $careUpdates,
+            'dateLabel' => now()->translatedFormat('l, d F Y'),
+            'roleLabel' => $role->value,
+            'stats' => $stats,
+            'unavailableModule' => null,
+            'userName' => $role === HospitalStaffRole::Doctor
+                ? DB::table('doctors')->where('id', $doctorId)->value('full_name')
+                : Str::before($user->email, '@'),
+        ]);
+    }
+}
