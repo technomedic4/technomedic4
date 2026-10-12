@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class AuthController extends Controller
 {
@@ -18,17 +19,39 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
-       $request->validate([
-            'email' => 'required|string|email|max:255|unique:users',
+        $validated = $request->validate([
+            'name' => 'required|string|max:150',
+            'email' => 'required|string|email|max:100|unique:users,email',
+            'phone_number' => 'required|string|max:20|unique:users,phone_number',
+            'gender' => 'required|in:L,P',
+            'birth_date' => 'required|date|before_or_equal:today',
             'password' => 'required|string|min:6',
         ]);
 
-        User::create([
-            'email' => $request->email,
-            'password_hash' => Hash::make($request->password),
-            'role_id' => 1, // Sesuaikan dengan id role yang ada di database kelompokmu
-            'is_active' => 1,
-        ]);
+        $patientRoleId = DB::table('roles')->where('role_name', 'Pasien')->value('id');
+
+        if (!$patientRoleId) {
+            return back()->withInput()->withErrors([
+                'role' => 'Role Pasien belum tersedia. Hubungi administrator.',
+            ]);
+        }
+
+        DB::transaction(function () use ($validated, $patientRoleId) {
+            $user = User::create([
+                'email' => $validated['email'],
+                'phone_number' => $validated['phone_number'],
+                'password_hash' => Hash::make($validated['password']),
+                'role_id' => $patientRoleId,
+                'is_active' => 1,
+            ]);
+
+            DB::table('patient_profiles')->insert([
+                'user_id' => $user->id,
+                'full_name' => $validated['name'],
+                'gender' => $validated['gender'],
+                'birth_date' => $validated['birth_date'],
+            ]);
+        });
 
         return redirect(url('/login'))->with('success', 'Registrasi berhasil! Silakan login.');
     }
@@ -47,9 +70,23 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        $user = User::where('email', $credentials['email'])->first();
+        $storedPassword = $user?->getAuthPassword();
+        $passwordInfo = $storedPassword ? password_get_info($storedPassword) : ['algoName' => 'unknown'];
 
-        if (Auth::attempt(['email' => $credentials['email'], 'password' => $credentials['password']])) {
+        $passwordMatches = match ($passwordInfo['algoName']) {
+            'bcrypt' => Hash::check($credentials['password'], $storedPassword),
+            'unknown' => $storedPassword !== null && hash_equals($storedPassword, $credentials['password']),
+            default => password_verify($credentials['password'], $storedPassword),
+        };
+
+        if ($user && $passwordMatches) {
+            if ($passwordInfo['algoName'] !== 'bcrypt') {
+                $user->password_hash = Hash::make($credentials['password']);
+                $user->save();
+            }
+
+            Auth::login($user);
             $request->session()->regenerate();
 
             // Arahkan ke halaman dashboard atau beranda setelah berhasil login

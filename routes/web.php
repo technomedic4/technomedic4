@@ -5,7 +5,11 @@ use App\Http\Controllers\AuthController;
 use Illuminate\Notifications\Notifiable;
 
 // home Page
-fn() => view('home-page'); // atau cara standar di bawah:
+// Home Page
+Route::get('/', function () {
+    return redirect('/home-page');
+});
+
 Route::get('/home-page', function () {
     return view('home-page');
 });

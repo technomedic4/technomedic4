@@ -116,6 +116,25 @@ body {
     transition: border-color 0.3s ease;
 }
 
+.input select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #dcdde1;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 14px;
+}
+
+.form-errors {
+    margin-bottom: 16px;
+    color: #b42318;
+    font-size: 13px;
+}
+
+.form-errors p {
+    margin: 4px 0;
+}
+
 .input input:focus {
     border-color: #3498db;
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
