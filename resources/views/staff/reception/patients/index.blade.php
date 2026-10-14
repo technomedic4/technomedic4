@@ -24,6 +24,7 @@
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL RESEPSIONIS</span>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.reception.patients.index') }}" aria-current="page"><span class="staff-navigation-icon">▤</span>Data pasien</a>
                 <a class="staff-navigation-link" href="{{ route('staff.reception.registrations.index') }}"><span class="staff-navigation-icon">◷</span>Pendaftaran & antrean</a>
+                <a class="staff-navigation-link" href="{{ route('staff.medical-records.index') }}"><span class="staff-navigation-icon">＋</span>Rekam medis & laporan</a>
             </nav>
             <form class="staff-logout-form" action="{{ route('logout') }}" method="post">
                 @csrf

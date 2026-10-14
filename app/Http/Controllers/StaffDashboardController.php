@@ -51,48 +51,78 @@ class StaffDashboardController extends Controller
             ]);
         }
 
-        $stats = [
-            [
-                'label' => 'Jadwal hari ini',
-                'value' => (clone $appointmentsQuery)->count('appointments.id'),
-                'description' => $role === HospitalStaffRole::Doctor ? 'Pasien terdaftar pada jadwal Anda' : 'Seluruh pendaftaran hari ini',
-            ],
-            [
-                'label' => 'Menunggu',
-                'value' => (clone $appointmentsQuery)
-                    ->whereIn('appointments.status', ['Pending', 'Confirmed'])
-                    ->count('appointments.id'),
-                'description' => 'Menunggu atau telah dikonfirmasi',
-            ],
-            [
-                'label' => 'Sudah check-in',
-                'value' => (clone $appointmentsQuery)
-                    ->where('appointments.status', 'Checked-In')
-                    ->count('appointments.id'),
-                'description' => 'Pasien hadir di rumah sakit',
-            ],
-            [
-                'label' => 'Selesai',
-                'value' => (clone $appointmentsQuery)
-                    ->where('appointments.status', 'Completed')
-                    ->count('appointments.id'),
-                'description' => 'Kunjungan selesai hari ini',
-            ],
-        ];
+        if ($role === HospitalStaffRole::Nurse) {
+            $stats = [
+                [
+                    'label' => 'Pasien rawat inap',
+                    'value' => DB::table('inpatient_admissions')->whereNull('discharged_at')->count(),
+                    'description' => 'Pasien yang masih dirawat',
+                ],
+                [
+                    'label' => 'Pembaruan kondisi hari ini',
+                    'value' => DB::table('patient_care_updates')
+                        ->whereNotNull('inpatient_admission_id')
+                        ->whereDate('created_at', now()->toDateString())
+                        ->count(),
+                    'description' => 'Catatan perawatan yang dibuat hari ini',
+                ],
+            ];
+        } else {
+            $stats = [
+                [
+                    'label' => 'Jadwal hari ini',
+                    'value' => (clone $appointmentsQuery)->count('appointments.id'),
+                    'description' => $role === HospitalStaffRole::Doctor ? 'Pasien terdaftar pada jadwal Anda' : 'Seluruh pendaftaran hari ini',
+                ],
+                [
+                    'label' => 'Menunggu',
+                    'value' => (clone $appointmentsQuery)
+                        ->whereIn('appointments.status', ['Pending', 'Confirmed'])
+                        ->count('appointments.id'),
+                    'description' => 'Menunggu atau telah dikonfirmasi',
+                ],
+                [
+                    'label' => 'Sudah check-in',
+                    'value' => (clone $appointmentsQuery)
+                        ->where('appointments.status', 'Checked-In')
+                        ->count('appointments.id'),
+                    'description' => 'Pasien hadir di rumah sakit',
+                ],
+                [
+                    'label' => 'Selesai',
+                    'value' => (clone $appointmentsQuery)
+                        ->where('appointments.status', 'Completed')
+                        ->count('appointments.id'),
+                    'description' => 'Kunjungan selesai hari ini',
+                ],
+            ];
+        }
 
         $appointments = collect();
         $careUpdates = collect();
 
         if ($role === HospitalStaffRole::Nurse) {
             $careUpdates = DB::table('patient_care_updates as updates')
-                ->join('patient_profiles as patients', 'patients.id', '=', 'updates.patient_id')
+                ->join('inpatient_admissions as admissions', 'admissions.id', '=', 'updates.inpatient_admission_id')
+                ->join('patient_profiles as patients', 'patients.id', '=', 'admissions.patient_id')
+                ->leftJoin('users', 'users.id', '=', 'updates.recorded_by_user_id')
+                ->whereNull('admissions.discharged_at')
                 ->select([
                     'patients.full_name as patient_name',
+                    'admissions.room_number',
+                    'admissions.bed_number',
                     'updates.update_status',
                     'updates.notes',
+                    'updates.temperature_celsius',
+                    'updates.blood_pressure',
+                    'updates.pulse_rate',
+                    'updates.respiratory_rate',
+                    'updates.oxygen_saturation',
                     'updates.created_at',
+                    'users.email as recorded_by',
                 ])
                 ->orderByDesc('updates.created_at')
+                ->orderByDesc('updates.id')
                 ->limit(8)
                 ->get();
         } else {

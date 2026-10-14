@@ -1,11 +1,15 @@
 <?php
 
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\TeleconsultationController;
 use App\Http\Controllers\Staff\DoctorManagementController;
 use App\Http\Controllers\Staff\DoctorWorkflowController;
-use App\Http\Controllers\StaffDashboardController;
+use App\Http\Controllers\Staff\InpatientAdmissionController;
+use App\Http\Controllers\Staff\MedicalRecordController;
+use App\Http\Controllers\Staff\NurseManagementController;
+use App\Http\Controllers\Staff\NursingController;
 use App\Http\Controllers\Staff\ReceptionController;
+use App\Http\Controllers\StaffDashboardController;
+use App\Http\Controllers\TeleconsultationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -53,6 +57,47 @@ Route::middleware(['auth', 'staff'])
                 Route::post('/teleconsultations/{appointment}/messages', [TeleconsultationController::class, 'sendMessage'])->name('teleconsultations.messages.store');
                 Route::post('/teleconsultations/{appointment}/complete', [TeleconsultationController::class, 'complete'])->name('teleconsultations.complete');
             });
+
+        Route::middleware('staff-role:Perawat')
+            ->prefix('nursing')
+            ->name('nursing.')
+            ->group(function (): void {
+                Route::get('/updates', [NursingController::class, 'refreshDashboardUpdates'])->name('updates');
+                Route::get('/inpatients', [NursingController::class, 'index'])->name('inpatients.index');
+                Route::get('/inpatients/refresh', [NursingController::class, 'refresh'])->name('inpatients.refresh');
+                Route::get('/inpatients/{admission}', [NursingController::class, 'show'])->name('inpatients.show');
+                Route::get('/inpatients/{admission}/updates', [NursingController::class, 'refreshUpdates'])->name('inpatients.updates');
+                Route::post('/inpatients/{admission}/updates', [NursingController::class, 'storeUpdate'])->name('inpatients.updates.store');
+            });
+
+        Route::middleware('staff-role:Resepsionis,Admin')
+            ->group(function (): void {
+                Route::get('/inpatient-admissions', [InpatientAdmissionController::class, 'index'])->name('inpatient-admissions.index');
+                Route::get('/inpatient-admissions/create', [InpatientAdmissionController::class, 'create'])->name('inpatient-admissions.create');
+                Route::post('/inpatient-admissions', [InpatientAdmissionController::class, 'store'])->name('inpatient-admissions.store');
+                Route::post('/inpatient-admissions/{admission}/discharge', [InpatientAdmissionController::class, 'discharge'])->name('inpatient-admissions.discharge');
+            });
+
+        Route::middleware('staff-role:Resepsionis,Admin')
+            ->prefix('management/nurses')
+            ->name('management.nurses.')
+            ->group(function (): void {
+                Route::get('/', [NurseManagementController::class, 'index'])->name('index');
+                Route::post('/', [NurseManagementController::class, 'store'])->name('store');
+            });
+
+        Route::middleware('staff-role:Resepsionis,Admin,Dokter')
+            ->get('/medical-records', [MedicalRecordController::class, 'index'])
+            ->name('medical-records.index');
+        Route::middleware('staff-role:Resepsionis,Admin,Dokter')
+            ->get('/medical-records/{patient}', [MedicalRecordController::class, 'show'])
+            ->name('medical-records.show');
+        Route::middleware('staff-role:Resepsionis,Admin,Dokter')
+            ->get('/records', [MedicalRecordController::class, 'index'])
+            ->name('records.index');
+        Route::middleware('staff-role:Resepsionis,Admin,Dokter')
+            ->get('/records/{patient}', [MedicalRecordController::class, 'show'])
+            ->name('records.show');
 
         Route::middleware('staff-role:Resepsionis')
             ->name('management.')

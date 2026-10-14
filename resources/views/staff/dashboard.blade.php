@@ -36,6 +36,10 @@
                         <span class="staff-navigation-icon">◷</span>
                         Pendaftaran & antrean
                     </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.inpatient-admissions.index') }}">
+                        <span class="staff-navigation-icon">＋</span>
+                        Rawat inap
+                    </a>
                 @elseif ($roleLabel === \App\Support\HospitalStaffRole::Doctor->value)
                     <a class="staff-navigation-link" href="{{ route('staff.doctor.appointments.index') }}">
                         <span class="staff-navigation-icon">◷</span>
@@ -44,6 +48,11 @@
                     <a class="staff-navigation-link" href="{{ route('staff.doctor.teleconsultations.index') }}">
                         <span class="staff-navigation-icon">✉</span>
                         Telekonsultasi
+                    </a>
+                @elseif ($roleLabel === \App\Support\HospitalStaffRole::Nurse->value)
+                    <a class="staff-navigation-link" href="{{ route('staff.nursing.inpatients.index') }}">
+                        <span class="staff-navigation-icon">＋</span>
+                        Pasien rawat inap
                     </a>
                 @else
                     <span class="staff-navigation-link is-disabled" aria-disabled="true">
@@ -63,12 +72,24 @@
                         Manajemen dokter
                     </a>
                 @endif
-                <span class="staff-navigation-link is-disabled" aria-disabled="true">
-                <span class="staff-navigation-link is-disabled" aria-disabled="true">
-                    <span class="staff-navigation-icon">＋</span>
-                    Rekam medis & laporan
-                    <span class="staff-soon">Tahap berikutnya</span>
-                </span>
+                @if (in_array($roleLabel, ['Resepsionis', 'Admin'], true))
+                    <a class="staff-navigation-link" href="{{ route('staff.management.nurses.index') }}">
+                        <span class="staff-navigation-icon">＋</span>
+                        Manajemen perawat
+                    </a>
+                @endif
+                @if (in_array($roleLabel, ['Resepsionis', 'Admin', \App\Support\HospitalStaffRole::Doctor->value], true))
+                    <a class="staff-navigation-link" href="{{ route('staff.medical-records.index') }}">
+                        <span class="staff-navigation-icon">＋</span>
+                        Rekam medis & laporan
+                    </a>
+                @else
+                    <span class="staff-navigation-link is-disabled" aria-disabled="true">
+                        <span class="staff-navigation-icon">＋</span>
+                        Rekam medis & laporan
+                        <span class="staff-soon">Tahap berikutnya</span>
+                    </span>
+                @endif
                 <span class="staff-navigation-link is-disabled" aria-disabled="true">
                     <span class="staff-navigation-icon">▣</span>
                     Tagihan
@@ -103,6 +124,10 @@
                             <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.appointments.index') }}">Buka jadwal pasien</a>
                             <a class="staff-action-button staff-button-link" href="{{ route('staff.doctor.teleconsultations.index') }}">Telekonsultasi</a>
                         </div>
+                    @elseif ($roleLabel === \App\Support\HospitalStaffRole::Nurse->value)
+                        <div class="staff-heading-actions">
+                            <a class="staff-action-button staff-button-link" href="{{ route('staff.nursing.inpatients.index') }}">Buka pasien rawat inap</a>
+                        </div>
                     @endif
                 </section>
 
@@ -127,37 +152,38 @@
                         <section class="staff-panel">
                             <div class="staff-panel-heading">
                                 <div>
-                                    <h2>Pembaruan perawatan terbaru</h2>
-                                    <p>Catatan yang tersimpan pada sistem rumah sakit.</p>
+                                    <h2>Pembaruan pasien rawat inap</h2>
+                                    <p>Daftar ini diperbarui otomatis setiap 8 detik.</p>
                                 </div>
+                                <span class="staff-live-indicator"><span></span>Realtime</span>
+                                <span id="nursing-updates-status" aria-live="polite"></span>
                             </div>
-                            @if ($careUpdates->isEmpty())
-                                <div class="staff-empty-state">Belum ada pembaruan perawatan.</div>
-                            @else
-                                <div class="staff-table-wrap">
-                                    <table class="staff-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Pasien</th>
-                                                <th>Status</th>
-                                                <th>Catatan</th>
-                                                <th>Waktu</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach ($careUpdates as $update)
-                                                <tr>
-                                                    <td class="staff-patient-name">{{ $update->patient_name }}</td>
-                                                    <td>{{ $update->update_status }}</td>
-                                                    <td>{{ $update->notes ?: '—' }}</td>
-                                                    <td>{{ $update->created_at }}</td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
-                            @endif
+                            <div id="nursing-updates-list">
+                                @include('staff.nursing.partials.dashboard-updates', ['careUpdates' => $careUpdates])
+                            </div>
                         </section>
+                        <script>
+                            const updatesList = document.getElementById('nursing-updates-list');
+                            const updatesStatus = document.getElementById('nursing-updates-status');
+
+                            window.setInterval(async () => {
+                                try {
+                                    const response = await fetch(@json(route('staff.nursing.updates')), {
+                                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                                        credentials: 'same-origin',
+                                    });
+
+                                    if (!response.ok) {
+                                        throw new Error('Pembaruan tidak dapat dimuat.');
+                                    }
+
+                                    updatesList.innerHTML = await response.text();
+                                    updatesStatus.textContent = `Diperbarui ${new Date().toLocaleTimeString('id-ID')}`;
+                                } catch {
+                                    updatesStatus.textContent = 'Pembaruan otomatis gagal. Muat ulang halaman untuk mencoba lagi.';
+                                }
+                            }, 8000);
+                        </script>
                     @else
                         <section class="staff-panel">
                             <div class="staff-panel-heading">
