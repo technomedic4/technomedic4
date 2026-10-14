@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Support\HospitalStaffRole;
+use App\Support\UserPasswordVerifier;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
@@ -23,20 +23,22 @@ class AuthController extends Controller
         return view('patient.login');
     }
 
-    public function login(Request $request): RedirectResponse
+    public function login(Request $request, UserPasswordVerifier $passwordVerifier): RedirectResponse
     {
         return $this->authenticate(
             $request,
+            $passwordVerifier,
             HospitalStaffRole::values(),
             route('staff.dashboard'),
             'Email atau password salah, atau akun tidak memiliki akses portal staf.',
         );
     }
 
-    public function patientLogin(Request $request): RedirectResponse
+    public function patientLogin(Request $request, UserPasswordVerifier $passwordVerifier): RedirectResponse
     {
         return $this->authenticate(
             $request,
+            $passwordVerifier,
             ['Pasien'],
             route('patient.teleconsultations.index'),
             'Email atau password salah, atau akun tidak memiliki akses portal pasien.',
@@ -44,10 +46,11 @@ class AuthController extends Controller
     }
 
     /**
-     * @param list<string> $allowedRoles
+     * @param  list<string>  $allowedRoles
      */
     private function authenticate(
         Request $request,
+        UserPasswordVerifier $passwordVerifier,
         array $allowedRoles,
         string $redirectRoute,
         string $errorMessage,
@@ -57,14 +60,8 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
         $user = User::where('email', $credentials['email'])->first();
-        $storedPassword = $user?->getAuthPassword();
-        $passwordInfo = $storedPassword ? password_get_info($storedPassword) : ['algoName' => 'unknown'];
-
-        $passwordMatches = match ($passwordInfo['algoName']) {
-            'bcrypt' => Hash::check($credentials['password'], $storedPassword),
-            'unknown' => $storedPassword !== null && hash_equals($storedPassword, $credentials['password']),
-            default => password_verify($credentials['password'], $storedPassword),
-        };
+        $passwordMatches = $user !== null
+            && $passwordVerifier->verifyAndUpgrade($user, $credentials['password']);
 
         $roleName = $user
             ? DB::table('roles')->where('id', $user->role_id)->value('role_name')
@@ -80,11 +77,6 @@ class AuthController extends Controller
             && $hasPatientProfile
             && in_array($roleName, $allowedRoles, true)
         ) {
-            if ($passwordInfo['algoName'] !== 'bcrypt') {
-                $user->password_hash = Hash::make($credentials['password']);
-                $user->save();
-            }
-
             Auth::login($user);
             $request->session()->regenerate();
 

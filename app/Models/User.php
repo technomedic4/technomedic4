@@ -2,14 +2,14 @@
 
 namespace App\Models;
 
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     protected $table = 'users';
 
@@ -29,7 +29,7 @@ class User extends Authenticatable
     ];
 
     // Beritahu Laravel untuk membaca password dari kolom password_hash
-    public function getAuthPassword()
+    public function getAuthPassword(): string
     {
         return $this->password_hash;
     }

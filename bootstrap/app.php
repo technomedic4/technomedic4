@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureHospitalStaff;
+use App\Http\Middleware\EnsureMobileAccount;
 use App\Http\Middleware\EnsurePatient;
 use App\Http\Middleware\EnsureStaffRole;
 use Illuminate\Foundation\Application;
@@ -11,12 +12,14 @@ use Illuminate\Http\Request;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'staff' => EnsureHospitalStaff::class,
+            'mobile-account' => EnsureMobileAccount::class,
             'patient' => EnsurePatient::class,
             'staff-role' => EnsureStaffRole::class,
         ]);
