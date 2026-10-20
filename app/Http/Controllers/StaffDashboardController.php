@@ -40,14 +40,52 @@ class StaffDashboardController extends Controller
         }
 
         if ($role === HospitalStaffRole::Finance) {
+            $latestBills = DB::table('bills')
+                ->join('patient_profiles as patients', 'patients.id', '=', 'bills.patient_id')
+                ->select([
+                    'bills.id',
+                    'bills.bill_number',
+                    'bills.total_amount',
+                    'bills.amount_paid',
+                    'bills.status',
+                    'patients.full_name as patient_name',
+                ])
+                ->orderByDesc('bills.created_at')
+                ->orderByDesc('bills.id')
+                ->limit(8)
+                ->get();
+
             return view('staff.dashboard', [
                 'appointments' => collect(),
                 'careUpdates' => collect(),
                 'dateLabel' => now()->locale('id')->translatedFormat('l, d F Y'),
-                'stats' => [],
+                'latestBills' => $latestBills,
+                'stats' => [
+                    [
+                        'label' => 'Tagihan tercatat',
+                        'value' => DB::table('bills')->count(),
+                        'description' => 'Jumlah seluruh tagihan yang dibuat',
+                    ],
+                    [
+                        'label' => 'Belum lunas',
+                        'value' => DB::table('bills')->whereIn('status', ['Unpaid', 'Partially Paid'])->count(),
+                        'description' => 'Tagihan dengan sisa pembayaran',
+                    ],
+                    [
+                        'label' => 'Sudah lunas',
+                        'value' => DB::table('bills')->where('status', 'Paid')->count(),
+                        'description' => 'Tagihan yang telah dibayar penuh',
+                    ],
+                    [
+                        'label' => 'Pembayaran hari ini',
+                        'value' => (int) DB::table('bill_payments')
+                            ->whereDate('paid_at', now()->toDateString())
+                            ->sum('amount'),
+                        'description' => 'Total penerimaan hari ini (Rp)',
+                    ],
+                ],
                 'roleLabel' => $role->value,
                 'userName' => Str::before($user->email, '@'),
-                'unavailableModule' => 'Modul tagihan belum tersedia pada database. Data keuangan belum dapat ditampilkan.',
             ]);
         }
 
@@ -149,9 +187,9 @@ class StaffDashboardController extends Controller
             'appointments' => $appointments,
             'careUpdates' => $careUpdates,
             'dateLabel' => now()->translatedFormat('l, d F Y'),
+            'latestBills' => collect(),
             'roleLabel' => $role->value,
             'stats' => $stats,
-            'unavailableModule' => null,
             'userName' => $role === HospitalStaffRole::Doctor
                 ? DB::table('doctors')->where('id', $doctorId)->value('full_name')
                 : Str::before($user->email, '@'),

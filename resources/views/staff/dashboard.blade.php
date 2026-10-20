@@ -90,11 +90,18 @@
                         <span class="staff-soon">Tahap berikutnya</span>
                     </span>
                 @endif
-                <span class="staff-navigation-link is-disabled" aria-disabled="true">
-                    <span class="staff-navigation-icon">▣</span>
-                    Tagihan
-                    <span class="staff-soon">Tahap berikutnya</span>
-                </span>
+                @if (in_array($roleLabel, ['Resepsionis', 'Keuangan', 'Admin'], true))
+                    <a class="staff-navigation-link" href="{{ route('staff.billing.index') }}">
+                        <span class="staff-navigation-icon">▣</span>
+                        Tagihan
+                    </a>
+                @else
+                    <span class="staff-navigation-link is-disabled" aria-disabled="true">
+                        <span class="staff-navigation-icon">▣</span>
+                        Tagihan
+                        <span class="staff-soon">Tahap berikutnya</span>
+                    </span>
+                @endif
             </nav>
 
             <form class="staff-logout-form" action="{{ route('logout') }}" method="post">
@@ -128,27 +135,61 @@
                         <div class="staff-heading-actions">
                             <a class="staff-action-button staff-button-link" href="{{ route('staff.nursing.inpatients.index') }}">Buka pasien rawat inap</a>
                         </div>
+                    @elseif (in_array($roleLabel, ['Resepsionis', 'Keuangan', 'Admin'], true))
+                        <div class="staff-heading-actions">
+                            <a class="staff-action-button staff-button-link" href="{{ route('staff.billing.create') }}">+ Buat tagihan</a>
+                        </div>
                     @endif
                 </section>
 
-                @if ($unavailableModule)
-                    <section class="staff-alert staff-alert-info" role="status">
-                        <strong>Informasi modul</strong>
-                        <p>{{ $unavailableModule }}</p>
-                        <p>Dashboard keuangan akan diaktifkan setelah skema tagihan disiapkan.</p>
-                    </section>
-                @else
-                    <section class="staff-stat-grid" aria-label="Ringkasan kunjungan hari ini">
-                        @foreach ($stats as $stat)
-                            <article class="staff-stat-card">
-                                <span class="staff-stat-label">{{ $stat['label'] }}</span>
-                                <strong class="staff-stat-value">{{ number_format($stat['value']) }}</strong>
-                                <span class="staff-stat-description">{{ $stat['description'] }}</span>
-                            </article>
-                        @endforeach
-                    </section>
+                <section class="staff-stat-grid" aria-label="{{ $roleLabel === 'Keuangan' ? 'Ringkasan tagihan' : 'Ringkasan kunjungan hari ini' }}">
+                    @foreach ($stats as $stat)
+                        <article class="staff-stat-card">
+                            <span class="staff-stat-label">{{ $stat['label'] }}</span>
+                            <strong class="staff-stat-value">{{ $stat['label'] === 'Pembayaran hari ini' ? 'Rp '.number_format($stat['value'], 0, ',', '.') : number_format($stat['value']) }}</strong>
+                            <span class="staff-stat-description">{{ $stat['description'] }}</span>
+                        </article>
+                    @endforeach
+                </section>
 
-                    @if ($roleLabel === \App\Support\HospitalStaffRole::Nurse->value)
+                    @if ($roleLabel === \App\Support\HospitalStaffRole::Finance->value)
+                        <section class="staff-panel">
+                            <div class="staff-panel-heading">
+                                <div>
+                                    <h2>Tagihan terbaru</h2>
+                                    <p>Ringkasan tagihan pasien yang terakhir dibuat.</p>
+                                </div>
+                                <a class="staff-text-link" href="{{ route('staff.billing.index') }}">Lihat semua tagihan</a>
+                            </div>
+                            <div class="staff-table-wrap">
+                                <table class="staff-table">
+                                    <thead><tr><th>No. tagihan</th><th>Pasien</th><th>Total</th><th>Sisa</th><th>Status</th></tr></thead>
+                                    <tbody>
+                                        @forelse ($latestBills as $bill)
+                                            @php
+                                                [$statusLabel, $statusClass] = match ($bill->status) {
+                                                    'Unpaid' => ['Belum dibayar', 'is-unpaid'],
+                                                    'Partially Paid' => ['Dibayar sebagian', 'is-partial'],
+                                                    'Paid' => ['Lunas', 'is-paid'],
+                                                    'Cancelled' => ['Dibatalkan', 'is-cancelled'],
+                                                    default => [$bill->status, ''],
+                                                };
+                                            @endphp
+                                            <tr>
+                                                <td><a class="staff-inline-action" href="{{ route('staff.billing.show', $bill->id) }}">{{ $bill->bill_number }}</a></td>
+                                                <td>{{ $bill->patient_name }}</td>
+                                                <td>Rp {{ number_format($bill->total_amount, 0, ',', '.') }}</td>
+                                                <td>Rp {{ number_format($bill->status === 'Cancelled' ? 0 : $bill->total_amount - $bill->amount_paid, 0, ',', '.') }}</td>
+                                                <td><span class="staff-status {{ $statusClass }}">{{ $statusLabel }}</span></td>
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="5" class="staff-table-empty">Belum ada tagihan yang dibuat.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    @elseif ($roleLabel === \App\Support\HospitalStaffRole::Nurse->value)
                         <section class="staff-panel">
                             <div class="staff-panel-heading">
                                 <div>
@@ -240,7 +281,6 @@
                             @endif
                         </section>
                     @endif
-                @endif
                 <p class="staff-data-note">Informasi pasien hanya ditampilkan sesuai hak akses akun staf.</p>
             </div>
         </main>

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Staff\BillingController;
 use App\Http\Controllers\Staff\DoctorManagementController;
 use App\Http\Controllers\Staff\DoctorWorkflowController;
 use App\Http\Controllers\Staff\InpatientAdmissionController;
@@ -76,6 +77,21 @@ Route::middleware(['auth', 'staff'])
                 Route::get('/inpatient-admissions/create', [InpatientAdmissionController::class, 'create'])->name('inpatient-admissions.create');
                 Route::post('/inpatient-admissions', [InpatientAdmissionController::class, 'store'])->name('inpatient-admissions.store');
                 Route::post('/inpatient-admissions/{admission}/discharge', [InpatientAdmissionController::class, 'discharge'])->name('inpatient-admissions.discharge');
+            });
+
+        Route::middleware('staff-role:Resepsionis,Keuangan,Admin')
+            ->prefix('billing')
+            ->name('billing.')
+            ->group(function (): void {
+                Route::get('/', [BillingController::class, 'index'])->name('index');
+                Route::get('/create', [BillingController::class, 'create'])->name('create');
+                Route::post('/', [BillingController::class, 'store'])->name('store');
+                Route::get('/{bill}', [BillingController::class, 'show'])->whereNumber('bill')->name('show');
+                Route::get('/{bill}/edit', [BillingController::class, 'edit'])->whereNumber('bill')->name('edit');
+                Route::put('/{bill}', [BillingController::class, 'update'])->whereNumber('bill')->name('update');
+                Route::delete('/{bill}', [BillingController::class, 'destroy'])->whereNumber('bill')->name('destroy');
+                Route::post('/{bill}/payments', [BillingController::class, 'recordPayment'])->whereNumber('bill')->name('payments.store');
+                Route::post('/{bill}/cancel', [BillingController::class, 'cancel'])->whereNumber('bill')->name('cancel');
             });
 
         Route::middleware('staff-role:Resepsionis,Admin')
