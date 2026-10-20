@@ -91,6 +91,14 @@ Route::middleware(['auth', 'staff'])
                 Route::put('/{bill}', [BillingController::class, 'update'])->whereNumber('bill')->name('update');
                 Route::delete('/{bill}', [BillingController::class, 'destroy'])->whereNumber('bill')->name('destroy');
                 Route::post('/{bill}/payments', [BillingController::class, 'recordPayment'])->whereNumber('bill')->name('payments.store');
+                Route::get('/{bill}/payment-submissions/{submission}/proof', [BillingController::class, 'paymentProof'])
+                    ->whereNumber('bill')
+                    ->whereNumber('submission')
+                    ->name('payment-submissions.proof');
+                Route::post('/{bill}/payment-submissions/{submission}/review', [BillingController::class, 'reviewPaymentSubmission'])
+                    ->whereNumber('bill')
+                    ->whereNumber('submission')
+                    ->name('payment-submissions.review');
                 Route::post('/{bill}/cancel', [BillingController::class, 'cancel'])->whereNumber('bill')->name('cancel');
             });
 

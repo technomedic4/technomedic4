@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class BillingManagementTest extends TestCase
@@ -104,6 +106,21 @@ class BillingManagementTest extends TestCase
             $table->string('payment_method');
             $table->string('reference')->nullable();
             $table->timestamp('paid_at');
+            $table->timestamps();
+        });
+
+        Schema::create('mobile_payment_submissions', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('bill_id');
+            $table->unsignedInteger('submitted_by_user_id');
+            $table->unsignedInteger('reviewed_by_user_id')->nullable();
+            $table->unsignedBigInteger('amount');
+            $table->string('payment_method', 20);
+            $table->string('reference', 100)->nullable();
+            $table->string('proof_path', 500);
+            $table->string('status', 20)->default('Pending');
+            $table->text('review_note')->nullable();
+            $table->timestamp('reviewed_at')->nullable();
             $table->timestamps();
         });
 
@@ -457,6 +474,104 @@ class BillingManagementTest extends TestCase
         $this->withToken($token)
             ->getJson('/api/v1/bills?patient_id='.$unrelatedPatientId)
             ->assertNotFound();
+    }
+
+    public function test_patient_payment_proof_requires_staff_approval_before_bill_is_paid(): void
+    {
+        Storage::fake('local');
+
+        $patient = $this->createUser('Pasien', 'patient@example.com');
+        $finance = $this->createUser('Keuangan', 'finance@example.com');
+        $patientId = $this->createPatient($patient->id, 'Maya Pasien');
+        $billId = $this->createBill($patientId, $finance->id, 75000);
+
+        $response = $this->withToken($this->issueToken($patient))
+            ->post("/api/v1/bills/{$billId}/payment-submissions", [
+                'payment_method' => 'Transfer',
+                'reference' => 'TRX-123',
+                'proof' => UploadedFile::fake()->image('proof.jpg'),
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.status', 'Pending');
+        $submissionId = $response->json('data.id');
+
+        $this->assertDatabaseHas('mobile_payment_submissions', [
+            'id' => $submissionId,
+            'bill_id' => $billId,
+            'submitted_by_user_id' => $patient->id,
+            'amount' => 75000,
+            'status' => 'Pending',
+        ]);
+        $this->assertDatabaseHas('bills', [
+            'id' => $billId,
+            'amount_paid' => 0,
+            'status' => 'Unpaid',
+        ]);
+        $this->assertDatabaseCount('bill_payments', 0);
+
+        $this->actingAs($finance)
+            ->post(route('staff.billing.payment-submissions.review', [$billId, $submissionId]), [
+                'decision' => 'Approved',
+                'review_note' => 'Pembayaran diterima.',
+            ])
+            ->assertRedirect(route('staff.billing.show', $billId))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('mobile_payment_submissions', [
+            'id' => $submissionId,
+            'status' => 'Approved',
+            'reviewed_by_user_id' => $finance->id,
+        ]);
+        $this->assertDatabaseHas('bill_payments', [
+            'bill_id' => $billId,
+            'recorded_by_user_id' => $finance->id,
+            'amount' => 75000,
+            'payment_method' => 'Transfer',
+        ]);
+        $this->assertDatabaseHas('bills', [
+            'id' => $billId,
+            'amount_paid' => 75000,
+            'status' => 'Paid',
+        ]);
+    }
+
+    public function test_rejected_mobile_payment_does_not_change_bill_balance(): void
+    {
+        Storage::fake('local');
+
+        $patient = $this->createUser('Pasien', 'patient@example.com');
+        $finance = $this->createUser('Keuangan', 'finance@example.com');
+        $patientId = $this->createPatient($patient->id, 'Maya Pasien');
+        $billId = $this->createBill($patientId, $finance->id, 75000);
+
+        $response = $this->withToken($this->issueToken($patient))
+            ->post("/api/v1/bills/{$billId}/payment-submissions", [
+                'payment_method' => 'QRIS',
+                'proof' => UploadedFile::fake()->image('proof.jpg'),
+            ])
+            ->assertCreated();
+
+        $this->actingAs($finance)
+            ->post(route('staff.billing.payment-submissions.review', [
+                $billId,
+                $response->json('data.id'),
+            ]), [
+                'decision' => 'Rejected',
+                'review_note' => 'Bukti tidak valid.',
+            ])
+            ->assertRedirect(route('staff.billing.show', $billId));
+
+        $this->assertDatabaseHas('mobile_payment_submissions', [
+            'id' => $response->json('data.id'),
+            'status' => 'Rejected',
+        ]);
+        $this->assertDatabaseHas('bills', [
+            'id' => $billId,
+            'amount_paid' => 0,
+            'status' => 'Unpaid',
+        ]);
+        $this->assertDatabaseCount('bill_payments', 0);
     }
 
     private function createUser(string $roleName, string $email): User

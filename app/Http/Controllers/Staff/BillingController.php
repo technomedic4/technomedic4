@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -120,11 +121,114 @@ class BillingController extends Controller
 
     public function show(Request $request, int $bill): View
     {
+        $paymentSubmissions = DB::table('mobile_payment_submissions')
+            ->join('users', 'users.id', '=', 'mobile_payment_submissions.submitted_by_user_id')
+            ->where('mobile_payment_submissions.bill_id', $bill)
+            ->select([
+                'mobile_payment_submissions.*',
+                'users.email as submitted_by',
+            ])
+            ->orderByDesc('mobile_payment_submissions.id')
+            ->get();
+
         return view('staff.billing.show', [
             'bill' => $this->loadBill($bill),
             'paymentMethods' => self::PAYMENT_METHODS,
             'roleLabel' => $this->staffRoleLabel($request),
+            'paymentSubmissions' => $paymentSubmissions,
         ]);
+    }
+
+    public function paymentProof(int $bill, int $submission)
+    {
+        $payment = DB::table('mobile_payment_submissions')
+            ->where('bill_id', $bill)
+            ->where('id', $submission)
+            ->first();
+        abort_if($payment === null, 404);
+        abort_unless(Storage::disk('local')->exists($payment->proof_path), 404);
+
+        return Storage::disk('local')->download(
+            $payment->proof_path,
+            'bukti-pembayaran-'.$payment->id,
+        );
+    }
+
+    public function reviewPaymentSubmission(
+        Request $request,
+        int $bill,
+        int $submission,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'decision' => ['required', Rule::in(['Approved', 'Rejected'])],
+            'review_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        DB::transaction(function () use ($request, $bill, $submission, $validated): void {
+            $billRecord = DB::table('bills')
+                ->where('id', $bill)
+                ->lockForUpdate()
+                ->first();
+            abort_if($billRecord === null, 404);
+
+            $payment = DB::table('mobile_payment_submissions')
+                ->where('bill_id', $bill)
+                ->where('id', $submission)
+                ->lockForUpdate()
+                ->first();
+            abort_if($payment === null, 404);
+
+            if ($payment->status !== 'Pending') {
+                throw ValidationException::withMessages([
+                    'decision' => 'Pengajuan pembayaran ini sudah ditinjau.',
+                ]);
+            }
+
+            if ($validated['decision'] === 'Approved') {
+                $balanceDue = (int) $billRecord->total_amount - (int) $billRecord->amount_paid;
+                if ($billRecord->status === 'Cancelled' || (int) $payment->amount > $balanceDue) {
+                    throw ValidationException::withMessages([
+                        'decision' => 'Sisa tagihan berubah; bukti pembayaran tidak dapat disetujui.',
+                    ]);
+                }
+
+                $now = now();
+                $amountPaid = (int) $billRecord->amount_paid + (int) $payment->amount;
+                DB::table('bill_payments')->insert([
+                    'bill_id' => $bill,
+                    'recorded_by_user_id' => $request->user()->id,
+                    'amount' => $payment->amount,
+                    'payment_method' => $payment->payment_method,
+                    'reference' => $payment->reference ?: 'Mobile proof #'.$payment->id,
+                    'paid_at' => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+                DB::table('bills')->where('id', $bill)->update([
+                    'amount_paid' => $amountPaid,
+                    'status' => $amountPaid === (int) $billRecord->total_amount
+                        ? 'Paid'
+                        : 'Partially Paid',
+                    'updated_at' => $now,
+                ]);
+            }
+
+            DB::table('mobile_payment_submissions')
+                ->where('id', $submission)
+                ->update([
+                    'status' => $validated['decision'],
+                    'reviewed_by_user_id' => $request->user()->id,
+                    'review_note' => $validated['review_note'] ?? null,
+                    'reviewed_at' => now(),
+                    'updated_at' => now(),
+                ]);
+        });
+
+        return redirect()
+            ->route('staff.billing.show', $bill)
+            ->with('success', $validated['decision'] === 'Approved'
+                ? 'Bukti pembayaran disetujui dan pembayaran dicatat.'
+                : 'Bukti pembayaran ditolak.');
     }
 
     public function edit(Request $request, int $bill): View

@@ -57,6 +57,42 @@
                     </div>
                 </section>
 
+                @if ($paymentSubmissions->isNotEmpty())
+                    <section class="staff-panel staff-billing-panel">
+                        <div class="staff-panel-heading">
+                            <div><h2>Pengajuan pembayaran dari mobile</h2><p>Periksa bukti sebelum menyetujui pembayaran.</p></div>
+                        </div>
+                        <div class="staff-table-wrap">
+                            <table class="staff-table">
+                                <thead><tr><th>Diajukan</th><th>Jumlah</th><th>Metode</th><th>Status</th><th>Bukti</th><th>Keputusan</th></tr></thead>
+                                <tbody>
+                                    @foreach ($paymentSubmissions as $submission)
+                                        <tr>
+                                            <td>{{ \Illuminate\Support\Carbon::parse($submission->created_at)->locale('id')->translatedFormat('d F Y, H:i') }}<br>{{ $submission->submitted_by }}</td>
+                                            <td>Rp {{ number_format($submission->amount, 0, ',', '.') }}</td>
+                                            <td>{{ $submission->payment_method }}<br>{{ $submission->reference ?: '—' }}</td>
+                                            <td>{{ $submission->status }}{{ $submission->review_note ? ': '.$submission->review_note : '' }}</td>
+                                            <td><a href="{{ route('staff.billing.payment-submissions.proof', [$bill->id, $submission->id]) }}">Unduh bukti</a></td>
+                                            <td>
+                                                @if ($submission->status === 'Pending')
+                                                    <form action="{{ route('staff.billing.payment-submissions.review', [$bill->id, $submission->id]) }}" method="post">
+                                                        @csrf
+                                                        <input type="text" name="review_note" maxlength="1000" placeholder="Catatan petugas">
+                                                        <button class="staff-action-button" type="submit" name="decision" value="Approved">Setujui</button>
+                                                        <button class="staff-secondary-button" type="submit" name="decision" value="Rejected">Tolak</button>
+                                                    </form>
+                                                @else
+                                                    Ditinjau {{ $submission->reviewed_at ? \Illuminate\Support\Carbon::parse($submission->reviewed_at)->locale('id')->translatedFormat('d F Y, H:i') : '' }}
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                @endif
+
                 @if ($bill->payments->isNotEmpty())
                     <section class="staff-panel staff-billing-panel">
                         <div class="staff-panel-heading"><div><h2>Riwayat pembayaran</h2><p>Transaksi pembayaran yang telah dicatat oleh petugas.</p></div></div>

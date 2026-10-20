@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'billing' => [
+        'bank_name' => env('BILLING_BANK_NAME'),
+        'bank_account' => env('BILLING_BANK_ACCOUNT'),
+        'bank_account_name' => env('BILLING_BANK_ACCOUNT_NAME'),
+        'qris_merchant_name' => env('BILLING_QRIS_MERCHANT_NAME'),
+        'qris_image_url' => env('BILLING_QRIS_IMAGE_URL'),
+    ],
+
 ];
