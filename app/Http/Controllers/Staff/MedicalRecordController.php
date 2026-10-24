@@ -63,9 +63,12 @@ class MedicalRecordController extends Controller
 
         if (Schema::hasTable('doctor_consultations')) {
             $query->leftJoin('doctor_consultations as consultations', 'consultations.appointment_id', '=', 'appointments.id')
+                ->leftJoin('departments as referral_departments', 'referral_departments.id', '=', 'consultations.referral_department_id')
                 ->addSelect([
                     'consultations.diagnosis',
                     'consultations.treatment_plan',
+                    'consultations.disposition',
+                    'referral_departments.name as referral_department_name',
                     'consultations.notes',
                     'consultations.created_at as consultation_created_at',
                 ]);

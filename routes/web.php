@@ -64,6 +64,10 @@ Route::middleware(['auth', 'staff'])
             ->name('nursing.')
             ->group(function (): void {
                 Route::get('/updates', [NursingController::class, 'refreshDashboardUpdates'])->name('updates');
+                Route::get('/assessment-queue', [NursingController::class, 'assessmentQueue'])->name('assessment-queue.index');
+                Route::get('/assessment-queue/refresh', [NursingController::class, 'refreshAssessmentQueue'])->name('assessment-queue.refresh');
+                Route::get('/assessment-queue/{appointment}', [NursingController::class, 'showAssessment'])->name('assessment-queue.show');
+                Route::post('/assessment-queue/{appointment}', [NursingController::class, 'storeAssessment'])->name('assessment-queue.assessments.store');
                 Route::get('/inpatients', [NursingController::class, 'index'])->name('inpatients.index');
                 Route::get('/inpatients/refresh', [NursingController::class, 'refresh'])->name('inpatients.refresh');
                 Route::get('/inpatients/{admission}', [NursingController::class, 'show'])->name('inpatients.show');
@@ -74,8 +78,7 @@ Route::middleware(['auth', 'staff'])
         Route::middleware('staff-role:Resepsionis,Admin')
             ->group(function (): void {
                 Route::get('/inpatient-admissions', [InpatientAdmissionController::class, 'index'])->name('inpatient-admissions.index');
-                Route::get('/inpatient-admissions/create', [InpatientAdmissionController::class, 'create'])->name('inpatient-admissions.create');
-                Route::post('/inpatient-admissions', [InpatientAdmissionController::class, 'store'])->name('inpatient-admissions.store');
+                Route::post('/inpatient-admissions/{admission}/room', [InpatientAdmissionController::class, 'assignRoom'])->name('inpatient-admissions.room.assign');
                 Route::post('/inpatient-admissions/{admission}/discharge', [InpatientAdmissionController::class, 'discharge'])->name('inpatient-admissions.discharge');
             });
 

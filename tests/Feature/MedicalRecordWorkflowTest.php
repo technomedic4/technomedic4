@@ -84,6 +84,8 @@ class MedicalRecordWorkflowTest extends TestCase
             $table->unsignedInteger('doctor_id');
             $table->text('diagnosis');
             $table->text('treatment_plan');
+            $table->string('disposition', 20)->nullable();
+            $table->unsignedInteger('referral_department_id')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
         });
@@ -96,12 +98,16 @@ class MedicalRecordWorkflowTest extends TestCase
         [$doctorId, $scheduleId] = $this->createDoctorSchedule('Dr. Farid');
         $appointmentId = $this->createAppointment($patientId, $scheduleId, 'Completed', 'Demam 3 hari');
 
+        $referralDepartmentId = DB::table('departments')->insertGetId(['name' => 'Kardiologi']);
+
         DB::table('doctor_consultations')->insert([
             'appointment_id' => $appointmentId,
             'patient_id' => $patientId,
             'doctor_id' => $doctorId,
             'diagnosis' => 'Infeksi saluran pernapasan atas',
             'treatment_plan' => 'Istirahat dan obat sesuai kebutuhan.',
+            'disposition' => 'Rawat Jalan',
+            'referral_department_id' => $referralDepartmentId,
             'notes' => 'Kontrol kembali jika tidak membaik.',
             'created_at' => now(),
             'updated_at' => now(),
@@ -117,7 +123,9 @@ class MedicalRecordWorkflowTest extends TestCase
             ->get(route('staff.medical-records.show', $patientId))
             ->assertOk()
             ->assertSeeText('Maya Pasien')
-            ->assertSeeText('Infeksi saluran pernapasan atas');
+            ->assertSeeText('Infeksi saluran pernapasan atas')
+            ->assertSeeText('Rawat Jalan')
+            ->assertSeeText('Kardiologi');
     }
 
     private function createUser(string $roleName): User

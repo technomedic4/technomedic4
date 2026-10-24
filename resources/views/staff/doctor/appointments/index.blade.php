@@ -55,7 +55,9 @@
                                         [$statusLabel, $statusClass] = match ($appointment->status) {
                                             'Pending' => ['Menunggu check-in', 'is-pending'],
                                             'Confirmed' => ['Dikonfirmasi', 'is-confirmed'],
-                                            'Checked-In' => ['Siap diperiksa', 'is-arrived'],
+                                            'Checked-In' => $appointment->nursing_assessment_id !== null
+                                                ? ['Siap diperiksa', 'is-arrived']
+                                                : ['Menunggu pemeriksaan perawat', 'is-confirmed'],
                                             'Completed' => ['Selesai', 'is-completed'],
                                             'Cancelled' => ['Dibatalkan', 'is-cancelled'],
                                             default => [$appointment->status, ''],
@@ -68,8 +70,10 @@
                                         <td class="staff-complaint-cell">{{ $appointment->initial_complaint ?: 'Belum ada keluhan yang dicatat.' }}</td>
                                         <td><span class="staff-status {{ $statusClass }}">{{ $statusLabel }}</span></td>
                                         <td>
-                                            @if (in_array($appointment->status, ['Checked-In', 'Completed'], true))
+                                            @if ($appointment->status === 'Completed' || ($appointment->status === 'Checked-In' && $appointment->nursing_assessment_id !== null))
                                                 <a class="staff-inline-action" href="{{ route('staff.doctor.appointments.show', $appointment->id) }}">{{ $appointment->status === 'Completed' ? 'Lihat catatan' : 'Mulai pemeriksaan' }}</a>
+                                            @elseif ($appointment->status === 'Checked-In')
+                                                <span class="staff-booking-code">Menunggu pemeriksaan awal perawat</span>
                                             @else
                                                 <span class="staff-booking-code">Menunggu check-in pasien</span>
                                             @endif
@@ -82,7 +86,7 @@
                         </table>
                     </div>
                 </section>
-                <p class="staff-data-note">Catatan konsultasi hanya dapat dibuat setelah pasien check-in. Menyimpan konsultasi akan menandai kunjungan selesai.</p>
+                <p class="staff-data-note">Pemeriksaan dokter tersedia setelah pasien check-in dan pemeriksaan awal perawat tersimpan. Menyimpan konsultasi akan menandai kunjungan selesai.</p>
             </div>
         </main>
     </div>

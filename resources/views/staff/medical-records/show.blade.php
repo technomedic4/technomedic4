@@ -65,6 +65,8 @@
                                     <th>Keluhan</th>
                                     <th>Diagnosis</th>
                                     <th>Rencana terapi</th>
+                                    <th>Keputusan dokter</th>
+                                    <th>Rujukan spesialis</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -79,9 +81,11 @@
                                         <td>{{ $record->initial_complaint ?: 'Belum ada keluhan' }}</td>
                                         <td>{{ $record->diagnosis ?: 'Belum ada diagnosis' }}</td>
                                         <td>{{ $record->treatment_plan ?: 'Belum ada rencana terapi' }}</td>
+                                        <td>{{ $record->disposition ?: 'Belum ada keputusan' }}</td>
+                                        <td>{{ $record->referral_department_name ?: (in_array($record->department_name, ['Umum', 'Poli Umum'], true) ? 'Tidak perlu dirujuk' : '—') }}</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="6" class="staff-table-empty">Belum ada riwayat kunjungan untuk pasien ini.</td></tr>
+                                    <tr><td colspan="8" class="staff-table-empty">Belum ada riwayat kunjungan untuk pasien ini.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>

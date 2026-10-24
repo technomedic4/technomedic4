@@ -19,6 +19,7 @@
                 <span class="staff-navigation-label">MENU UTAMA</span>
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL PERAWAT</span>
+                <a class="staff-navigation-link" href="{{ route('staff.nursing.assessment-queue.index') }}"><span class="staff-navigation-icon">◷</span>Antrean pemeriksaan awal</a>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.nursing.inpatients.index') }}" aria-current="page"><span class="staff-navigation-icon">＋</span>Pasien rawat inap</a>
             </nav>
             <form class="staff-logout-form" action="{{ route('logout') }}" method="post">@csrf<button class="staff-logout-button" type="submit">Keluar dari portal</button></form>

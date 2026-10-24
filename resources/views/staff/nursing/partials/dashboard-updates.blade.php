@@ -1,16 +1,14 @@
 @if ($careUpdates->isEmpty())
-    <div class="staff-empty-state">Belum ada pembaruan kondisi pasien rawat inap.</div>
+    <div class="staff-empty-state">Belum ada pembaruan kondisi pasien.</div>
 @else
     <div class="staff-table-wrap">
         <table class="staff-table">
-            <thead>
-                <tr><th>Pasien</th><th>Kamar</th><th>Kondisi</th><th>Tanda vital</th><th>Catatan</th><th>Perawat</th><th>Waktu</th></tr>
-            </thead>
+            <thead><tr><th>Pasien</th><th>Kunjungan / kamar</th><th>Kondisi</th><th>Tanda vital</th><th>Catatan</th><th>Perawat</th><th>Waktu</th></tr></thead>
             <tbody>
                 @foreach ($careUpdates as $update)
                     <tr>
                         <td class="staff-patient-name">{{ $update->patient_name }}</td>
-                        <td>{{ $update->room_number ?: '—' }} / {{ $update->bed_number ?: '—' }}</td>
+                        <td>{{ $update->booking_code ?: ($update->room_number ? $update->room_number.' / '.($update->bed_number ?: '—') : 'Rawat jalan') }}</td>
                         <td>{{ $update->update_status }}</td>
                         <td>
                             @if ($update->temperature_celsius !== null)Suhu {{ number_format((float) $update->temperature_celsius, 1) }} °C<br>@endif

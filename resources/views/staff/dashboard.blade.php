@@ -54,6 +54,10 @@
                         <span class="staff-navigation-icon">＋</span>
                         Pasien rawat inap
                     </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.nursing.assessment-queue.index') }}">
+                        <span class="staff-navigation-icon">◷</span>
+                        Antrean pemeriksaan awal
+                    </a>
                 @else
                     <span class="staff-navigation-link is-disabled" aria-disabled="true">
                     <span class="staff-navigation-icon">▤</span>
@@ -133,7 +137,8 @@
                         </div>
                     @elseif ($roleLabel === \App\Support\HospitalStaffRole::Nurse->value)
                         <div class="staff-heading-actions">
-                            <a class="staff-action-button staff-button-link" href="{{ route('staff.nursing.inpatients.index') }}">Buka pasien rawat inap</a>
+                            <a class="staff-action-button staff-button-link" href="{{ route('staff.nursing.assessment-queue.index') }}">Buka antrean pasien</a>
+                            <a class="staff-secondary-button staff-button-link" href="{{ route('staff.nursing.inpatients.index') }}">Pasien rawat inap</a>
                         </div>
                     @elseif (in_array($roleLabel, ['Resepsionis', 'Keuangan', 'Admin'], true))
                         <div class="staff-heading-actions">
@@ -193,7 +198,7 @@
                         <section class="staff-panel">
                             <div class="staff-panel-heading">
                                 <div>
-                                    <h2>Pembaruan pasien rawat inap</h2>
+                                    <h2>Pembaruan kondisi pasien</h2>
                                     <p>Daftar ini diperbarui otomatis setiap 8 detik.</p>
                                 </div>
                                 <span class="staff-live-indicator"><span></span>Realtime</span>
@@ -256,7 +261,11 @@
                                                     [$statusLabel, $statusClass] = match ($appointment->status) {
                                                         'Pending' => ['Menunggu', 'is-pending'],
                                                         'Confirmed' => ['Dikonfirmasi', 'is-confirmed'],
-                                                        'Checked-In' => ['Check-in', 'is-arrived'],
+                                                        'Checked-In' => $roleLabel === \App\Support\HospitalStaffRole::Doctor->value
+                                                            ? ($appointment->nursing_assessment_id !== null
+                                                                ? ['Siap diperiksa', 'is-arrived']
+                                                                : ['Menunggu perawat', 'is-confirmed'])
+                                                            : ['Check-in', 'is-arrived'],
                                                         'Completed' => ['Selesai', 'is-completed'],
                                                         'Cancelled' => ['Dibatalkan', 'is-cancelled'],
                                                         default => [$appointment->status, ''],

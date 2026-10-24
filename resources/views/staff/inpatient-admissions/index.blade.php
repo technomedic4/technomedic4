@@ -26,8 +26,7 @@
             <header class="staff-topbar"><div><span class="staff-topbar-kicker">MODUL RAWAT INAP</span><span class="staff-topbar-role">Admisi pasien</span></div><span class="staff-topbar-date">{{ now()->locale('id')->translatedFormat('l, d F Y') }}</span></header>
             <div class="staff-content">
                 <section class="staff-page-heading">
-                    <div><p class="staff-eyebrow">ADMISI & DISCHARGE</p><h1>Pasien rawat inap</h1><p>Catat pasien masuk dan keluar agar daftar perawatan perawat tetap akurat.</p></div>
-                    <a class="staff-action-button staff-button-link" href="{{ route('staff.inpatient-admissions.create') }}">+ Admisi pasien</a>
+                    <div><p class="staff-eyebrow">ADMISI & DISCHARGE</p><h1>Pasien rawat inap</h1><p>Daftar pasien yang diputuskan rawat inap oleh dokter. Lengkapi kamar dan tempat tidur, lalu catat kepulangan pasien.</p></div>
                 </section>
 
                 @if (session('success'))<div class="staff-alert staff-alert-success" role="status">{{ session('success') }}</div>@endif
@@ -46,13 +45,23 @@
                     </form>
                     <div class="staff-table-wrap">
                         <table class="staff-table">
-                            <thead><tr><th>Pasien</th><th>Kamar / tempat tidur</th><th>Alasan masuk</th><th>Waktu masuk</th><th>Admisi oleh</th><th>Aksi</th></tr></thead>
+                            <thead><tr><th>Pasien</th><th>Kamar / tempat tidur</th><th>Alasan masuk</th><th>Kunjungan</th><th>Waktu masuk</th><th>Diputuskan oleh</th><th>Aksi</th></tr></thead>
                             <tbody>
                                 @forelse ($admissions as $admission)
                                     <tr>
                                         <td><strong class="staff-patient-name">{{ $admission->patient_name }}</strong><span class="staff-booking-code">{{ $admission->medical_record_number ?: 'No. RM belum tersedia' }}</span></td>
-                                        <td>{{ $admission->room_number ?: '—' }} / {{ $admission->bed_number ?: '—' }}</td>
+                                        <td>
+                                            <form class="staff-search-form" action="{{ route('staff.inpatient-admissions.room.assign', $admission->id) }}" method="post">
+                                                @csrf
+                                                <label class="staff-sr-only" for="room-number-{{ $admission->id }}">Nomor kamar untuk {{ $admission->patient_name }}</label>
+                                                <input id="room-number-{{ $admission->id }}" name="room_number" type="text" maxlength="30" placeholder="Kamar" value="{{ $admission->room_number }}" required>
+                                                <label class="staff-sr-only" for="bed-number-{{ $admission->id }}">Nomor tempat tidur untuk {{ $admission->patient_name }}</label>
+                                                <input id="bed-number-{{ $admission->id }}" name="bed_number" type="text" maxlength="30" placeholder="Tempat tidur" value="{{ $admission->bed_number }}" required>
+                                                <button class="staff-secondary-button" type="submit">Simpan</button>
+                                            </form>
+                                        </td>
                                         <td>{{ \Illuminate\Support\Str::limit($admission->admission_reason, 100) }}</td>
+                                        <td>{{ $admission->booking_code ?: 'Admisi lama' }}</td>
                                         <td>{{ \Illuminate\Support\Carbon::parse($admission->admitted_at)->locale('id')->translatedFormat('d F Y, H:i') }}</td>
                                         <td>{{ $admission->admitted_by }}</td>
                                         <td>
@@ -63,14 +72,14 @@
                                         </td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="6" class="staff-table-empty">Belum ada pasien rawat inap aktif.</td></tr>
+                                    <tr><td colspan="7" class="staff-table-empty">Belum ada pasien rawat inap aktif yang diputuskan dokter.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
                     </div>
                     @if ($admissions->hasPages())<div class="staff-pagination">{{ $admissions->links() }}</div>@endif
                 </section>
-                <p class="staff-data-note">Pasien keluar tetap tersimpan sebagai riwayat. Pembaruan kondisi yang sudah dicatat tidak dihapus saat pasien keluar.</p>
+                <p class="staff-data-note">Keputusan rawat inap berasal dari dokter setelah pemeriksaan lanjutan. Pasien keluar tetap tersimpan sebagai riwayat dan catatan perawatan tidak dihapus.</p>
             </div>
         </main>
     </div>

@@ -51,11 +51,32 @@
                     <div class="staff-encounter-complaint"><span class="staff-stat-label">KELUHAN AWAL DARI LOKET</span><p>{{ $appointment->initial_complaint ?: 'Belum ada keluhan awal yang dicatat.' }}</p></div>
                 </section>
 
+                <section class="staff-panel staff-encounter-summary">
+                    <div class="staff-panel-heading">
+                        <div><h2>Pemeriksaan awal perawat</h2><p>{{ $nursingAssessment ? 'Dicatat oleh '.($nursingAssessment->recorded_by ?: 'perawat').' pada '.\Illuminate\Support\Carbon::parse($nursingAssessment->created_at)->locale('id')->translatedFormat('d F Y, H:i') : 'Data asesmen awal tidak tersedia untuk kunjungan lama.' }}</p></div>
+                        @if ($nursingAssessment)<span class="staff-status is-confirmed">{{ $nursingAssessment->update_status }}</span>@endif
+                    </div>
+                    @if ($nursingAssessment)
+                        <div class="staff-encounter-grid">
+                            <div><span class="staff-stat-label">SUHU</span><strong>{{ $nursingAssessment->temperature_celsius !== null ? number_format((float) $nursingAssessment->temperature_celsius, 1).' °C' : '—' }}</strong></div>
+                            <div><span class="staff-stat-label">TEKANAN DARAH</span><strong>{{ $nursingAssessment->blood_pressure ? $nursingAssessment->blood_pressure.' mmHg' : '—' }}</strong></div>
+                            <div><span class="staff-stat-label">NADI</span><strong>{{ $nursingAssessment->pulse_rate !== null ? $nursingAssessment->pulse_rate.' x/menit' : '—' }}</strong></div>
+                            <div><span class="staff-stat-label">FREKUENSI NAPAS</span><strong>{{ $nursingAssessment->respiratory_rate !== null ? $nursingAssessment->respiratory_rate.' x/menit' : '—' }}</strong></div>
+                            <div><span class="staff-stat-label">SATURASI OKSIGEN</span><strong>{{ $nursingAssessment->oxygen_saturation !== null ? $nursingAssessment->oxygen_saturation.'%' : '—' }}</strong></div>
+                        </div>
+                        <div class="staff-encounter-complaint"><span class="staff-stat-label">CATATAN PERAWAT</span><p>{{ $nursingAssessment->notes }}</p></div>
+                    @endif
+                </section>
+
                 @if ($consultation)
                     <section class="staff-form-panel staff-consultation-record">
                         <div class="staff-panel-heading"><div><h2>Catatan konsultasi tersimpan</h2><p>Disimpan {{ \Illuminate\Support\Carbon::parse($consultation->created_at)->locale('id')->translatedFormat('d F Y, H:i') }}</p></div></div>
                         <div class="staff-record-field"><span>Diagnosis</span><p>{{ $consultation->diagnosis }}</p></div>
                         <div class="staff-record-field"><span>Rencana tindakan / terapi</span><p>{{ $consultation->treatment_plan }}</p></div>
+                        <div class="staff-record-field"><span>Keputusan dokter</span><p>{{ $consultation->disposition }}</p></div>
+                        @if ($isGeneralPractitioner)
+                            <div class="staff-record-field"><span>Rujukan spesialis</span><p>{{ $consultation->referral_department_name ?: 'Tidak perlu dirujuk' }}</p></div>
+                        @endif
                         <div class="staff-record-field"><span>Catatan tambahan</span><p>{{ $consultation->notes ?: 'Tidak ada catatan tambahan.' }}</p></div>
                     </section>
                 @elseif ($appointment->status === 'Checked-In')
@@ -73,13 +94,34 @@
                                     <textarea id="treatment_plan" name="treatment_plan" rows="4" maxlength="5000" required>{{ old('treatment_plan') }}</textarea>
                                 </div>
                                 <div class="staff-form-field staff-field-wide">
+                                    <label for="disposition">Keputusan tindak lanjut <span>*</span></label>
+                                    <select id="disposition" name="disposition" required>
+                                        <option value="">Pilih rawat jalan atau rawat inap</option>
+                                        <option value="Rawat Jalan" @selected(old('disposition') === 'Rawat Jalan')>Rawat jalan</option>
+                                        <option value="Rawat Inap" @selected(old('disposition') === 'Rawat Inap')>Rawat inap</option>
+                                    </select>
+                                    <small>Memilih rawat inap akan otomatis membuat admisi. Resepsionis dapat melengkapi kamar dan tempat tidur.</small>
+                                </div>
+                                @if ($isGeneralPractitioner)
+                                    <div class="staff-form-field staff-field-wide">
+                                        <label for="referral_department_id">Rujukan ke dokter spesialis <span>*</span></label>
+                                        <select id="referral_department_id" name="referral_department_id" required>
+                                            <option value="">Pilih keputusan rujukan</option>
+                                            <option value="none" @selected(old('referral_department_id') === 'none')>Tidak perlu dirujuk</option>
+                                            @foreach ($referralDepartments as $department)
+                                                <option value="{{ $department->id }}" @selected((string) old('referral_department_id') === (string) $department->id)>{{ $department->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                @endif
+                                <div class="staff-form-field staff-field-wide">
                                     <label for="notes">Catatan tambahan <span class="staff-optional-label">Opsional</span></label>
                                     <textarea id="notes" name="notes" rows="3" maxlength="5000">{{ old('notes') }}</textarea>
                                 </div>
                             </div>
                             <div class="staff-form-actions">
                                 <a class="staff-cancel-link" href="{{ route('staff.doctor.appointments.index', ['date' => $appointment->appointment_date]) }}">Batal</a>
-                                <button class="staff-action-button" type="submit">Simpan catatan & selesaikan kunjungan</button>
+                                <button class="staff-action-button" type="submit">Simpan pemeriksaan & keputusan</button>
                             </div>
                         </form>
                     </section>
@@ -89,7 +131,7 @@
                         <p>Catatan konsultasi untuk kunjungan ini tidak tersedia. Kunjungan yang sudah selesai tidak dapat diubah dari portal dokter.</p>
                     </section>
                 @endif
-                <p class="staff-data-note">Pastikan diagnosis dan rencana tindak lanjut sudah benar. Setelah disimpan, catatan tidak dapat diubah dari halaman ini.</p>
+                <p class="staff-data-note">Pastikan diagnosis, rencana tindak lanjut, dan keputusan rawat sudah benar. Setelah disimpan, catatan tidak dapat diubah dari halaman ini.</p>
             </div>
         </main>
     </div>

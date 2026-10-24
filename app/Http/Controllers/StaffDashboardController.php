@@ -36,7 +36,12 @@ class StaffDashboardController extends Controller
             ->whereDate('appointments.appointment_date', now()->toDateString());
 
         if ($doctorId !== null) {
-            $appointmentsQuery->where('doctors.id', $doctorId);
+            $appointmentsQuery
+                ->where('doctors.id', $doctorId)
+                ->leftJoin('patient_care_updates as nursing_assessments', function ($join): void {
+                    $join->on('nursing_assessments.appointment_id', '=', 'appointments.id')
+                        ->whereNull('nursing_assessments.inpatient_admission_id');
+                });
         }
 
         if ($role === HospitalStaffRole::Finance) {
@@ -92,6 +97,21 @@ class StaffDashboardController extends Controller
         if ($role === HospitalStaffRole::Nurse) {
             $stats = [
                 [
+                    'label' => 'Antrean pemeriksaan awal',
+                    'value' => DB::table('appointments as appointments')
+                        ->where('appointments.consultation_type', 'In-Person')
+                        ->where('appointments.status', 'Checked-In')
+                        ->whereDate('appointments.appointment_date', now()->toDateString())
+                        ->whereNotExists(function ($query): void {
+                            $query->selectRaw('1')
+                                ->from('patient_care_updates as nursing_assessments')
+                                ->whereColumn('nursing_assessments.appointment_id', 'appointments.id')
+                                ->whereNull('nursing_assessments.inpatient_admission_id');
+                        })
+                        ->count(),
+                    'description' => 'Pasien check-in yang menunggu perawat',
+                ],
+                [
                     'label' => 'Pasien rawat inap',
                     'value' => DB::table('inpatient_admissions')->whereNull('discharged_at')->count(),
                     'description' => 'Pasien yang masih dirawat',
@@ -99,10 +119,9 @@ class StaffDashboardController extends Controller
                 [
                     'label' => 'Pembaruan kondisi hari ini',
                     'value' => DB::table('patient_care_updates')
-                        ->whereNotNull('inpatient_admission_id')
                         ->whereDate('created_at', now()->toDateString())
                         ->count(),
-                    'description' => 'Catatan perawatan yang dibuat hari ini',
+                    'description' => 'Pemeriksaan awal pasien dan pemantauan rawat inap',
                 ],
             ];
         } else {
@@ -141,14 +160,19 @@ class StaffDashboardController extends Controller
 
         if ($role === HospitalStaffRole::Nurse) {
             $careUpdates = DB::table('patient_care_updates as updates')
-                ->join('inpatient_admissions as admissions', 'admissions.id', '=', 'updates.inpatient_admission_id')
-                ->join('patient_profiles as patients', 'patients.id', '=', 'admissions.patient_id')
+                ->join('patient_profiles as patients', 'patients.id', '=', 'updates.patient_id')
+                ->leftJoin('inpatient_admissions as admissions', 'admissions.id', '=', 'updates.inpatient_admission_id')
+                ->leftJoin('appointments', 'appointments.id', '=', 'updates.appointment_id')
                 ->leftJoin('users', 'users.id', '=', 'updates.recorded_by_user_id')
-                ->whereNull('admissions.discharged_at')
+                ->where(function ($query): void {
+                    $query->whereNull('updates.inpatient_admission_id')
+                        ->orWhereNull('admissions.discharged_at');
+                })
                 ->select([
                     'patients.full_name as patient_name',
                     'admissions.room_number',
                     'admissions.bed_number',
+                    'appointments.booking_code',
                     'updates.update_status',
                     'updates.notes',
                     'updates.temperature_celsius',
@@ -164,20 +188,26 @@ class StaffDashboardController extends Controller
                 ->limit(8)
                 ->get();
         } else {
+            $appointmentColumns = [
+                'appointments.booking_code',
+                'appointments.queue_number',
+                'appointments.appointment_date',
+                'appointments.status',
+                'patients.full_name as patient_name',
+                'doctors.full_name as doctor_name',
+                'departments.name as department_name',
+                'schedules.start_time',
+            ];
+
+            if ($doctorId !== null) {
+                $appointmentColumns[] = 'nursing_assessments.id as nursing_assessment_id';
+            }
+
             $appointments = (clone $appointmentsQuery)
                 ->join('patient_profiles as patients', 'patients.id', '=', 'appointments.patient_id')
                 ->join('departments', 'departments.id', '=', 'doctors.department_id')
                 ->join('doctor_schedules as appointment_schedules', 'appointment_schedules.id', '=', 'appointments.doctor_schedule_id')
-                ->select([
-                    'appointments.booking_code',
-                    'appointments.queue_number',
-                    'appointments.appointment_date',
-                    'appointments.status',
-                    'patients.full_name as patient_name',
-                    'doctors.full_name as doctor_name',
-                    'departments.name as department_name',
-                    'schedules.start_time',
-                ])
+                ->select($appointmentColumns)
                 ->orderBy('appointments.queue_number')
                 ->limit(8)
                 ->get();
