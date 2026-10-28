@@ -63,7 +63,6 @@
                     <button class="staff-primary-button" type="submit">Masuk dengan aman</button>
                 </form>
                 <p class="staff-login-help">Bermasalah saat masuk? Hubungi administrator rumah sakit.</p>
-                <p class="staff-login-help"><a href="{{ route('patient.login') }}">Masuk sebagai pasien untuk telekonsultasi</a></p>
             </div>
         </section>
     </main>

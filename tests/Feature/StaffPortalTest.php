@@ -84,6 +84,8 @@ class StaffPortalTest extends TestCase
         Schema::create('patient_care_updates', function (Blueprint $table): void {
             $table->increments('id');
             $table->unsignedInteger('patient_id');
+            $table->unsignedInteger('appointment_id')->nullable();
+            $table->unsignedInteger('inpatient_admission_id')->nullable();
             $table->string('update_status');
             $table->text('notes')->nullable();
             $table->timestamp('created_at')->nullable();
@@ -98,7 +100,8 @@ class StaffPortalTest extends TestCase
         $this->get(route('login'))
             ->assertOk()
             ->assertSeeText('Masuk ke portal staf')
-            ->assertDontSeeText('Daftar Disini');
+            ->assertDontSeeText('Daftar Disini')
+            ->assertDontSeeText('Masuk sebagai pasien');
     }
 
     public function test_patient_account_cannot_sign_in_to_the_staff_portal(): void
@@ -187,7 +190,8 @@ class StaffPortalTest extends TestCase
         $this->get(route('staff.dashboard'))
             ->assertOk()
             ->assertSeeText('Pasien Dokter Utama')
-            ->assertDontSeeText('Pasien Dokter Lain');
+            ->assertDontSeeText('Pasien Dokter Lain')
+            ->assertDontSeeText('Tagihan');
     }
 
     public function test_finance_staff_sees_billing_summary_on_the_dashboard(): void

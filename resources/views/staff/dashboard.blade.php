@@ -99,7 +99,7 @@
                         <span class="staff-navigation-icon">▣</span>
                         Tagihan
                     </a>
-                @else
+                @elseif ($roleLabel !== \App\Support\HospitalStaffRole::Doctor->value)
                     <span class="staff-navigation-link is-disabled" aria-disabled="true">
                         <span class="staff-navigation-icon">▣</span>
                         Tagihan
