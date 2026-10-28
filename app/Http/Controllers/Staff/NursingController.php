@@ -347,6 +347,121 @@ class NursingController extends Controller
             ->with('success', 'Tindakan pasien berhasil dicatat sebagai bukti untuk validasi tagihan.');
     }
 
+    public function billingIndex(Request $request): View
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', Rule::in(['Unpaid', 'Partially Paid', 'Paid', 'Cancelled'])],
+        ]);
+        $search = trim((string) ($validated['search'] ?? ''));
+        $status = $validated['status'] ?? '';
+
+        $bills = DB::table('bills')
+            ->join('patient_profiles as patients', 'patients.id', '=', 'bills.patient_id')
+            ->when($search !== '', function (Builder $query) use ($search): void {
+                $query->where(function (Builder $query) use ($search): void {
+                    $query->where('patients.full_name', 'like', '%'.$search.'%')
+                        ->orWhere('patients.medical_record_number', 'like', '%'.$search.'%')
+                        ->orWhere('bills.bill_number', 'like', '%'.$search.'%');
+                });
+            })
+            ->when($status !== '', fn (Builder $query) => $query->where('bills.status', $status))
+            ->select([
+                'bills.id',
+                'bills.bill_number',
+                'bills.total_amount',
+                'bills.amount_paid',
+                'bills.status',
+                'bills.created_at',
+                'patients.full_name as patient_name',
+                'patients.medical_record_number',
+            ])
+            ->orderByDesc('bills.created_at')
+            ->orderByDesc('bills.id')
+            ->paginate(15)
+            ->withQueryString();
+
+        return view('staff.nursing.billing.index', [
+            'bills' => $bills,
+            'search' => $search,
+            'status' => $status,
+        ]);
+    }
+
+    public function billingShow(int $bill): View
+    {
+        $billRecord = DB::table('bills')
+            ->join('patient_profiles as patients', 'patients.id', '=', 'bills.patient_id')
+            ->where('bills.id', $bill)
+            ->select([
+                'bills.id',
+                'bills.bill_number',
+                'bills.total_amount',
+                'bills.amount_paid',
+                'bills.status',
+                'bills.created_at',
+                'patients.full_name as patient_name',
+                'patients.medical_record_number',
+            ])
+            ->first();
+
+        abort_if($billRecord === null, 404);
+
+        $billRecord->balance_due = $billRecord->status === 'Cancelled'
+            ? 0
+            : (int) $billRecord->total_amount - (int) $billRecord->amount_paid;
+
+        $items = DB::table('bill_items')
+            ->leftJoin('inpatient_nursing_treatments as treatments', 'treatments.bill_item_id', '=', 'bill_items.id')
+            ->leftJoin('users as nurses', 'nurses.id', '=', 'treatments.recorded_by_user_id')
+            ->where('bill_items.bill_id', $bill)
+            ->select([
+                'bill_items.item_name',
+                'bill_items.quantity',
+                'bill_items.unit_price',
+                'treatments.notes as treatment_notes',
+                'nurses.email as treatment_recorded_by',
+            ])
+            ->orderBy('bill_items.id')
+            ->get();
+
+        $payments = DB::table('bill_payments')
+            ->leftJoin('users', 'users.id', '=', 'bill_payments.recorded_by_user_id')
+            ->where('bill_payments.bill_id', $bill)
+            ->select([
+                'bill_payments.amount',
+                'bill_payments.payment_method',
+                'bill_payments.reference',
+                'bill_payments.paid_at',
+                'users.email as recorded_by',
+            ])
+            ->orderBy('bill_payments.paid_at')
+            ->orderBy('bill_payments.id')
+            ->get();
+
+        $paymentSubmissions = DB::table('mobile_payment_submissions')
+            ->leftJoin('users', 'users.id', '=', 'mobile_payment_submissions.submitted_by_user_id')
+            ->where('mobile_payment_submissions.bill_id', $bill)
+            ->select([
+                'mobile_payment_submissions.amount',
+                'mobile_payment_submissions.payment_method',
+                'mobile_payment_submissions.reference',
+                'mobile_payment_submissions.status',
+                'mobile_payment_submissions.created_at',
+                'users.email as submitted_by',
+            ])
+            ->orderBy('mobile_payment_submissions.created_at')
+            ->orderBy('mobile_payment_submissions.id')
+            ->get();
+
+        return view('staff.nursing.billing.show', [
+            'bill' => $billRecord,
+            'items' => $items,
+            'payments' => $payments,
+            'paymentSubmissions' => $paymentSubmissions,
+        ]);
+    }
+
     private function activeAdmissions(string $search = ''): Builder
     {
         $latestUpdates = DB::table('patient_care_updates')

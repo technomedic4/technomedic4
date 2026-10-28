@@ -271,6 +271,65 @@ class InpatientNursingWorkflowTest extends TestCase
             ->assertSeeText('Pasien sadar, keluhan berkurang.');
     }
 
+    public function test_checked_out_inpatient_updates_disappear_from_the_nurse_dashboard_and_live_refresh(): void
+    {
+        $nurse = $this->createUser('Perawat');
+        $receptionist = $this->createUser('Resepsionis');
+        $activePatientId = $this->createPatient();
+        $checkedOutPatientId = $this->createPatient();
+        $activeAdmissionId = $this->createAdmission($activePatientId);
+        $checkedOutAdmissionId = $this->createAdmission($checkedOutPatientId);
+
+        DB::table('patient_care_updates')->insert([
+            [
+                'appointment_id' => null,
+                'patient_id' => $activePatientId,
+                'inpatient_admission_id' => $activeAdmissionId,
+                'recorded_by_user_id' => $nurse->id,
+                'update_status' => 'Stabil',
+                'notes' => 'Catatan pasien masih dirawat.',
+                'created_at' => now(),
+            ],
+            [
+                'appointment_id' => null,
+                'patient_id' => $checkedOutPatientId,
+                'inpatient_admission_id' => $checkedOutAdmissionId,
+                'recorded_by_user_id' => $nurse->id,
+                'update_status' => 'Membaik',
+                'notes' => 'Catatan pasien akan checkout.',
+                'created_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($nurse)
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSee(route('staff.nursing.billing.index'))
+            ->assertSeeText('Catatan pasien masih dirawat.')
+            ->assertSeeText('Catatan pasien akan checkout.');
+
+        $this->actingAs($receptionist)
+            ->post(route('staff.inpatient-admissions.discharge', $checkedOutAdmissionId))
+            ->assertRedirect(route('staff.inpatient-admissions.index'))
+            ->assertSessionHas('success');
+
+        $this->actingAs($nurse)
+            ->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertSeeText('Catatan pasien masih dirawat.')
+            ->assertDontSeeText('Catatan pasien akan checkout.');
+
+        $this->get(route('staff.nursing.updates'))
+            ->assertOk()
+            ->assertSeeText('Catatan pasien masih dirawat.')
+            ->assertDontSeeText('Catatan pasien akan checkout.');
+
+        $this->assertDatabaseHas('patient_care_updates', [
+            'inpatient_admission_id' => $checkedOutAdmissionId,
+            'notes' => 'Catatan pasien akan checkout.',
+        ]);
+    }
+
     public function test_nurse_can_record_treatments_and_view_patient_billing_summary_without_controls(): void
     {
         $nurse = $this->createUser('Perawat');

@@ -58,6 +58,10 @@
                         <span class="staff-navigation-icon">◷</span>
                         Antrean pemeriksaan awal
                     </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.nursing.billing.index') }}">
+                        <span class="staff-navigation-icon">▣</span>
+                        Tagihan
+                    </a>
                 @else
                     <span class="staff-navigation-link is-disabled" aria-disabled="true">
                     <span class="staff-navigation-icon">▤</span>
@@ -99,7 +103,10 @@
                         <span class="staff-navigation-icon">▣</span>
                         Tagihan
                     </a>
-                @elseif ($roleLabel !== \App\Support\HospitalStaffRole::Doctor->value)
+                @elseif (! in_array($roleLabel, [
+                    \App\Support\HospitalStaffRole::Doctor->value,
+                    \App\Support\HospitalStaffRole::Nurse->value,
+                ], true))
                     <span class="staff-navigation-link is-disabled" aria-disabled="true">
                         <span class="staff-navigation-icon">▣</span>
                         Tagihan

@@ -74,6 +74,8 @@ Route::middleware(['auth', 'staff'])
                 Route::get('/inpatients/{admission}/updates', [NursingController::class, 'refreshUpdates'])->name('inpatients.updates');
                 Route::post('/inpatients/{admission}/updates', [NursingController::class, 'storeUpdate'])->name('inpatients.updates.store');
                 Route::post('/inpatients/{admission}/treatments', [NursingController::class, 'storeTreatment'])->name('inpatients.treatments.store');
+                Route::get('/billing', [NursingController::class, 'billingIndex'])->name('billing.index');
+                Route::get('/billing/{bill}', [NursingController::class, 'billingShow'])->whereNumber('bill')->name('billing.show');
             });
 
         Route::middleware('staff-role:Resepsionis,Admin')

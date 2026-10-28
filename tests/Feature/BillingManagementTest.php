@@ -310,6 +310,85 @@ class BillingManagementTest extends TestCase
         $this->assertDatabaseCount('bills', 1);
     }
 
+    public function test_nurse_can_read_all_bill_transactions_but_cannot_change_or_pay_them(): void
+    {
+        $nurse = $this->createUser('Perawat', 'nurse@example.com');
+        $receptionist = $this->createUser('Resepsionis', 'reception@example.com');
+        $firstPatientId = $this->createPatient(null, 'Pasien Pertama');
+        $secondPatientId = $this->createPatient(null, 'Pasien Kedua');
+        $firstBillId = $this->createBill($firstPatientId, $receptionist->id, 100000);
+        $secondBillId = $this->createBill($secondPatientId, $receptionist->id, 75000);
+        DB::table('bill_payments')->insert([
+            'bill_id' => $firstBillId,
+            'recorded_by_user_id' => $receptionist->id,
+            'amount' => 25000,
+            'payment_method' => 'Transfer',
+            'reference' => 'TRX-READONLY-001',
+            'paid_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('bills')->where('id', $firstBillId)->update([
+            'amount_paid' => 25000,
+            'status' => 'Partially Paid',
+        ]);
+        DB::table('mobile_payment_submissions')->insert([
+            'bill_id' => $firstBillId,
+            'submitted_by_user_id' => $receptionist->id,
+            'amount' => 10000,
+            'payment_method' => 'QRIS',
+            'reference' => 'QRIS-READONLY-001',
+            'proof_path' => 'proofs/read-only-test.jpg',
+            'status' => 'Pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($nurse)
+            ->get(route('staff.nursing.billing.index'))
+            ->assertOk()
+            ->assertSeeText('INV-TEST-001')
+            ->assertSeeText('Pasien Pertama')
+            ->assertSeeText('Pasien Kedua')
+            ->assertSeeText('INFORMASI BACA SAJA');
+
+        $this->get(route('staff.nursing.billing.show', $firstBillId))
+            ->assertOk()
+            ->assertSeeText('Biaya layanan')
+            ->assertSeeText('TRX-READONLY-001')
+            ->assertSeeText('QRIS-READONLY-001')
+            ->assertSeeText('Menunggu pemeriksaan')
+            ->assertSeeText('Perawat tidak dapat mengubah nominal')
+            ->assertDontSeeText('Catat pembayaran')
+            ->assertDontSeeText('Edit tagihan');
+
+        $this->get(route('staff.billing.index'))->assertForbidden();
+        $this->get(route('staff.billing.show', $firstBillId))->assertForbidden();
+        $this->get(route('staff.billing.edit', $firstBillId))->assertForbidden();
+        $this->post(route('staff.billing.store'), [
+            'patient_id' => $firstPatientId,
+            'items' => [['item_name' => 'Layanan', 'quantity' => 1, 'unit_price' => 1000]],
+        ])->assertForbidden();
+        $this->put(route('staff.billing.update', $firstBillId), [
+            'patient_id' => $firstPatientId,
+            'items' => [['item_name' => 'Layanan', 'quantity' => 1, 'unit_price' => 1000]],
+        ])->assertForbidden();
+        $this->post(route('staff.billing.payments.store', $firstBillId), [
+            'amount' => 1000,
+            'payment_method' => 'Cash',
+        ])->assertForbidden();
+        $this->post(route('staff.billing.payment-submissions.review', [$firstBillId, 1]), [
+            'decision' => 'Approved',
+        ])->assertForbidden();
+
+        $this->assertDatabaseHas('bills', [
+            'id' => $firstBillId,
+            'total_amount' => 100000,
+            'amount_paid' => 25000,
+            'status' => 'Partially Paid',
+        ]);
+    }
+
     public function test_qris_is_available_and_can_be_recorded_as_a_payment_method(): void
     {
         $finance = $this->createUser('Keuangan', 'finance@example.com');
