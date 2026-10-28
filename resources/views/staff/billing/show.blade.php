@@ -42,10 +42,24 @@
                     <div class="staff-panel-heading"><div><h2>Rincian tagihan</h2><p>Dibuat {{ \Illuminate\Support\Carbon::parse($bill->created_at)->locale('id')->translatedFormat('d F Y, H:i') }}</p></div><span class="staff-status {{ $statusClass }}">{{ $statusLabel }}</span></div>
                     <div class="staff-table-wrap">
                         <table class="staff-table">
-                            <thead><tr><th>Item</th><th>Jumlah</th><th>Harga satuan</th><th>Subtotal</th></tr></thead>
+                            <thead><tr><th>Item</th><th>Jumlah</th><th>Harga satuan</th><th>Subtotal</th><th>Bukti tindakan</th></tr></thead>
                             <tbody>
                                 @foreach ($bill->items as $item)
-                                    <tr><td>{{ $item->item_name }}</td><td>{{ number_format($item->quantity) }}</td><td>Rp {{ number_format($item->unit_price, 0, ',', '.') }}</td><td>Rp {{ number_format($item->quantity * $item->unit_price, 0, ',', '.') }}</td></tr>
+                                    <tr>
+                                        <td>{{ $item->item_name }}</td>
+                                        <td>{{ number_format($item->quantity) }}</td>
+                                        <td>Rp {{ number_format($item->unit_price, 0, ',', '.') }}</td>
+                                        <td>Rp {{ number_format($item->quantity * $item->unit_price, 0, ',', '.') }}</td>
+                                        <td>
+                                            @if ($item->nursing_treatment_id)
+                                                <strong>Catatan tindakan perawat</strong><br>
+                                                {{ $item->nursing_treatment_notes ?: 'Tanpa catatan tambahan' }}<br>
+                                                <small>{{ $item->nursing_treatment_recorded_by }}</small>
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                    </tr>
                                 @endforeach
                             </tbody>
                         </table>

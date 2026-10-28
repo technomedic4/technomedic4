@@ -210,8 +210,47 @@ class NursingController extends Controller
 
         abort_if($patientAdmission === null, 404, 'Data rawat inap aktif tidak ditemukan.');
 
+        $treatments = DB::table('inpatient_nursing_treatments as treatments')
+            ->leftJoin('users', 'users.id', '=', 'treatments.recorded_by_user_id')
+            ->leftJoin('bill_items', 'bill_items.id', '=', 'treatments.bill_item_id')
+            ->leftJoin('bills', 'bills.id', '=', 'bill_items.bill_id')
+            ->where('treatments.admission_id', $admission)
+            ->select([
+                'treatments.treatment_name',
+                'treatments.notes',
+                'treatments.created_at',
+                'users.email as recorded_by',
+                'bills.bill_number',
+            ])
+            ->orderByDesc('treatments.created_at')
+            ->orderByDesc('treatments.id')
+            ->get();
+
+        $bills = DB::table('bills')
+            ->where('patient_id', $patientAdmission->patient_id)
+            ->select([
+                'id',
+                'bill_number',
+                'total_amount',
+                'amount_paid',
+                'status',
+                'created_at',
+            ])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(static function (object $bill): object {
+                $bill->balance_due = $bill->status === 'Cancelled'
+                    ? 0
+                    : (int) $bill->total_amount - (int) $bill->amount_paid;
+
+                return $bill;
+            });
+
         return view('staff.nursing.show', [
             'admission' => $patientAdmission,
+            'bills' => $bills,
+            'treatments' => $treatments,
             'updates' => $this->careUpdates($admission)->get(),
             'updateStatuses' => self::UPDATE_STATUSES,
         ]);
@@ -270,6 +309,42 @@ class NursingController extends Controller
         return redirect()
             ->route('staff.nursing.inpatients.show', $admission)
             ->with('success', 'Pembaruan kondisi pasien berhasil dicatat.');
+    }
+
+    public function storeTreatment(Request $request, int $admission): RedirectResponse
+    {
+        $validated = $request->validate([
+            'treatment_name' => ['required', 'string', 'not_regex:/^\s*$/u', 'max:150'],
+            'treatment_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        DB::transaction(function () use ($request, $admission, $validated): void {
+            $patientAdmission = DB::table('inpatient_admissions')
+                ->where('id', $admission)
+                ->whereNull('discharged_at')
+                ->lockForUpdate()
+                ->first();
+
+            if ($patientAdmission === null) {
+                throw ValidationException::withMessages([
+                    'admission' => 'Tindakan hanya dapat dicatat untuk pasien yang masih dirawat.',
+                ]);
+            }
+
+            DB::table('inpatient_nursing_treatments')->insert([
+                'admission_id' => $patientAdmission->id,
+                'patient_id' => $patientAdmission->patient_id,
+                'treatment_name' => trim($validated['treatment_name']),
+                'notes' => isset($validated['treatment_notes']) ? trim($validated['treatment_notes']) : null,
+                'recorded_by_user_id' => $request->user()->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        return redirect()
+            ->route('staff.nursing.inpatients.show', $admission)
+            ->with('success', 'Tindakan pasien berhasil dicatat sebagai bukti untuk validasi tagihan.');
     }
 
     private function activeAdmissions(string $search = ''): Builder

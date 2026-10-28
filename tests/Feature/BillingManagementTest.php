@@ -98,6 +98,29 @@ class BillingManagementTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('inpatient_admissions', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('patient_id');
+            $table->string('room_number')->nullable();
+            $table->string('bed_number')->nullable();
+            $table->text('admission_reason');
+            $table->unsignedInteger('admitted_by_user_id');
+            $table->timestamp('admitted_at');
+            $table->timestamp('discharged_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('inpatient_nursing_treatments', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('admission_id');
+            $table->unsignedInteger('patient_id');
+            $table->string('treatment_name', 150);
+            $table->text('notes')->nullable();
+            $table->unsignedInteger('recorded_by_user_id');
+            $table->unsignedInteger('bill_item_id')->nullable()->unique();
+            $table->timestamps();
+        });
+
         Schema::create('bill_payments', function (Blueprint $table): void {
             $table->increments('id');
             $table->unsignedInteger('bill_id');
@@ -201,6 +224,90 @@ class BillingManagementTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertDatabaseMissing('bills', ['id' => $bill->id]);
+    }
+
+    public function test_receptionist_can_add_a_nurse_recorded_treatment_to_a_bill_with_their_own_price(): void
+    {
+        $receptionist = $this->createUser('Resepsionis', 'reception@example.com');
+        $nurse = $this->createUser('Perawat', 'nurse@example.com');
+        $patientId = $this->createPatient(null, 'Pasien Rawat Inap');
+        $admissionId = DB::table('inpatient_admissions')->insertGetId([
+            'patient_id' => $patientId,
+            'admission_reason' => 'Observasi.',
+            'admitted_by_user_id' => $receptionist->id,
+            'admitted_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $treatmentId = DB::table('inpatient_nursing_treatments')->insertGetId([
+            'admission_id' => $admissionId,
+            'patient_id' => $patientId,
+            'treatment_name' => 'Perawatan luka',
+            'notes' => 'Dicatat oleh perawat.',
+            'recorded_by_user_id' => $nurse->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($receptionist)
+            ->get(route('staff.billing.create', ['patient_id' => $patientId]))
+            ->assertOk()
+            ->assertSeeText('Bukti tindakan dari perawat')
+            ->assertSeeText('Perawatan luka')
+            ->assertSeeText('Nominal diisi petugas billing yang berwenang, bukan perawat')
+            ->assertSee('value="'.$patientId.'" selected', false);
+
+        $this->post(route('staff.billing.store'), [
+            'patient_id' => $patientId,
+            'items' => [[
+                'item_name' => 'Nama tindakan yang dimanipulasi',
+                'quantity' => 1,
+                'unit_price' => 65000,
+                'nursing_treatment_id' => $treatmentId,
+            ]],
+        ])->assertRedirect();
+
+        $bill = DB::table('bills')->first();
+        $billItem = DB::table('bill_items')->where('bill_id', $bill->id)->first();
+        self::assertSame(65000, (int) $bill->total_amount);
+        self::assertSame('Perawatan luka', $billItem->item_name);
+        $this->assertDatabaseHas('inpatient_nursing_treatments', [
+            'id' => $treatmentId,
+            'bill_item_id' => $billItem->id,
+        ]);
+        $this->get(route('staff.billing.show', $bill->id))
+            ->assertOk()
+            ->assertSeeText('Catatan tindakan perawat')
+            ->assertSeeText('Dicatat oleh perawat.');
+
+        $this->put(route('staff.billing.update', $bill->id), [
+            'patient_id' => $patientId,
+            'items' => [[
+                'item_name' => 'Nama tindakan yang dimanipulasi',
+                'quantity' => 1,
+                'unit_price' => 70000,
+                'nursing_treatment_id' => $treatmentId,
+            ]],
+        ])->assertRedirect(route('staff.billing.show', $bill->id));
+
+        $updatedBillItem = DB::table('bill_items')->where('bill_id', $bill->id)->first();
+        self::assertSame('Perawatan luka', $updatedBillItem->item_name);
+        $this->assertDatabaseHas('inpatient_nursing_treatments', [
+            'id' => $treatmentId,
+            'bill_item_id' => $updatedBillItem->id,
+        ]);
+
+        $this->post(route('staff.billing.store'), [
+            'patient_id' => $patientId,
+            'items' => [[
+                'item_name' => 'Perawatan luka',
+                'quantity' => 1,
+                'unit_price' => 65000,
+                'nursing_treatment_id' => $treatmentId,
+            ]],
+        ])->assertSessionHasErrors('items');
+
+        $this->assertDatabaseCount('bills', 1);
     }
 
     public function test_qris_is_available_and_can_be_recorded_as_a_payment_method(): void
@@ -420,6 +527,23 @@ class BillingManagementTest extends TestCase
         $this->actingAs($doctor)
             ->get(route('staff.billing.index'))
             ->assertForbidden();
+
+        $nurse = $this->createUser('Perawat', 'nurse@example.com');
+        $billId = (int) DB::table('bills')->value('id');
+
+        $this->actingAs($nurse)
+            ->get(route('staff.billing.index'))
+            ->assertForbidden();
+        $this->get(route('staff.billing.create'))
+            ->assertForbidden();
+        $this->post(route('staff.billing.store'), [
+            'patient_id' => $patientId,
+            'items' => [['item_name' => 'Layanan', 'quantity' => 1, 'unit_price' => 1000]],
+        ])->assertForbidden();
+        $this->post(route('staff.billing.payments.store', $billId), [
+            'amount' => 1000,
+            'payment_method' => 'Cash',
+        ])->assertForbidden();
 
         $admin = $this->createUser('Admin', 'admin@example.com');
 

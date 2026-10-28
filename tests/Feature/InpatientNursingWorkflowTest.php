@@ -86,6 +86,37 @@ class InpatientNursingWorkflowTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('bills', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('bill_number')->unique();
+            $table->unsignedInteger('patient_id');
+            $table->unsignedBigInteger('total_amount');
+            $table->unsignedBigInteger('amount_paid')->default(0);
+            $table->string('status');
+            $table->unsignedInteger('created_by_user_id');
+            $table->timestamps();
+        });
+
+        Schema::create('bill_items', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('bill_id');
+            $table->string('item_name');
+            $table->unsignedInteger('quantity');
+            $table->unsignedBigInteger('unit_price');
+            $table->timestamps();
+        });
+
+        Schema::create('inpatient_nursing_treatments', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('admission_id');
+            $table->unsignedInteger('patient_id');
+            $table->string('treatment_name', 150);
+            $table->text('notes')->nullable();
+            $table->unsignedInteger('recorded_by_user_id');
+            $table->unsignedInteger('bill_item_id')->nullable()->unique();
+            $table->timestamps();
+        });
+
         Schema::create('patient_care_updates', function (Blueprint $table): void {
             $table->increments('id');
             $table->unsignedInteger('appointment_id')->nullable()->unique();
@@ -240,6 +271,61 @@ class InpatientNursingWorkflowTest extends TestCase
             ->assertSeeText('Pasien sadar, keluhan berkurang.');
     }
 
+    public function test_nurse_can_record_treatments_and_view_patient_billing_summary_without_controls(): void
+    {
+        $nurse = $this->createUser('Perawat');
+        $receptionist = $this->createUser('Resepsionis');
+        $patientId = $this->createPatient();
+        $admissionId = $this->createAdmission($patientId);
+        $billId = DB::table('bills')->insertGetId([
+            'bill_number' => 'INV-INPATIENT-001',
+            'patient_id' => $patientId,
+            'total_amount' => 120000,
+            'amount_paid' => 30000,
+            'status' => 'Partially Paid',
+            'created_by_user_id' => $receptionist->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('bill_items')->insert([
+            'bill_id' => $billId,
+            'item_name' => 'Rawat inap',
+            'quantity' => 1,
+            'unit_price' => 120000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($nurse)
+            ->post(route('staff.nursing.inpatients.treatments.store', $admissionId), [
+                'treatment_name' => 'Perawatan luka',
+                'treatment_notes' => 'Luka dibersihkan dan ditutup perban.',
+            ])
+            ->assertRedirect(route('staff.nursing.inpatients.show', $admissionId))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('inpatient_nursing_treatments', [
+            'admission_id' => $admissionId,
+            'patient_id' => $patientId,
+            'treatment_name' => 'Perawatan luka',
+            'notes' => 'Luka dibersihkan dan ditutup perban.',
+            'recorded_by_user_id' => $nurse->id,
+            'bill_item_id' => null,
+        ]);
+
+        $this->get(route('staff.nursing.inpatients.show', $admissionId))
+            ->assertOk()
+            ->assertSeeText('Perawatan luka')
+            ->assertSeeText('Menunggu validasi resepsionis')
+            ->assertSeeText('INV-INPATIENT-001')
+            ->assertSeeText('Rp 120.000')
+            ->assertSeeText('Rp 30.000')
+            ->assertSeeText('Rp 90.000')
+            ->assertSeeText('Perawat tidak dapat mengubah nominal atau memproses pembayaran')
+            ->assertDontSeeText('Catat pembayaran')
+            ->assertDontSeeText('Edit tagihan');
+    }
+
     public function test_nurse_records_initial_vitals_for_a_checked_in_patient_before_the_doctor_queue(): void
     {
         $nurse = $this->createUser('Perawat');
@@ -349,7 +435,12 @@ class InpatientNursingWorkflowTest extends TestCase
             'notes' => 'Tidak boleh dicatat setelah pasien keluar.',
         ])->assertSessionHasErrors('admission');
 
+        $this->post(route('staff.nursing.inpatients.treatments.store', $admissionId), [
+            'treatment_name' => 'Perawatan luka',
+        ])->assertSessionHasErrors('admission');
+
         $this->assertDatabaseCount('patient_care_updates', 0);
+        $this->assertDatabaseCount('inpatient_nursing_treatments', 0);
     }
 
     public function test_non_nurse_cannot_access_nursing_routes(): void

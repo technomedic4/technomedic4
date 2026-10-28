@@ -7,6 +7,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -66,8 +67,10 @@ class BillingController extends Controller
     {
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
+            'patient_id' => ['nullable', 'integer', 'exists:patient_profiles,id'],
         ]);
         $search = trim((string) ($validated['search'] ?? ''));
+        $patientId = isset($validated['patient_id']) ? (int) $validated['patient_id'] : null;
 
         $patients = DB::table('patient_profiles')
             ->select(['id', 'full_name', 'medical_record_number'])
@@ -81,12 +84,21 @@ class BillingController extends Controller
             ->limit(100)
             ->get();
 
+        if ($patientId !== null && ! $patients->contains('id', $patientId)) {
+            $patients->prepend(DB::table('patient_profiles')
+                ->select(['id', 'full_name', 'medical_record_number'])
+                ->where('id', $patientId)
+                ->first());
+        }
+
         return view('staff.billing.form', [
             'bill' => null,
             'patients' => $patients,
+            'nursingTreatments' => $patientId === null ? collect() : $this->availableNursingTreatments($patientId),
             'roleLabel' => $this->staffRoleLabel($request),
             'search' => $search,
-            'formItems' => [['item_name' => '', 'quantity' => 1, 'unit_price' => '']],
+            'selectedPatientId' => $patientId,
+            'formItems' => [['item_name' => '', 'quantity' => 1, 'unit_price' => '', 'nursing_treatment_id' => '']],
         ]);
     }
 
@@ -97,6 +109,8 @@ class BillingController extends Controller
         $totalAmount = $this->totalAmount($items);
 
         $billId = DB::transaction(function () use ($request, $validated, $items, $totalAmount): int {
+            $treatmentNames = $this->selectedNursingTreatmentNames($items, (int) $validated['patient_id']);
+            $items = $this->applyNursingTreatmentNames($items, $treatmentNames);
             $now = now();
             $billId = DB::table('bills')->insertGetId([
                 'bill_number' => 'INV-'.$now->format('Ymd').'-'.Str::upper(Str::random(8)),
@@ -235,6 +249,9 @@ class BillingController extends Controller
     {
         $billRecord = $this->loadBill($bill);
         $this->ensureEditable($billRecord);
+        $nursingTreatmentsByItem = DB::table('inpatient_nursing_treatments')
+            ->whereIn('bill_item_id', $billRecord->items->pluck('id'))
+            ->pluck('id', 'bill_item_id');
 
         $patients = DB::table('patient_profiles')
             ->select(['id', 'full_name', 'medical_record_number'])
@@ -251,12 +268,15 @@ class BillingController extends Controller
         return view('staff.billing.form', [
             'bill' => $billRecord,
             'patients' => $patients,
+            'nursingTreatments' => $this->availableNursingTreatments((int) $billRecord->patient_id),
             'roleLabel' => $this->staffRoleLabel($request),
             'search' => '',
-            'formItems' => $billRecord->items->map(static fn (object $item): array => [
+            'selectedPatientId' => (int) $billRecord->patient_id,
+            'formItems' => $billRecord->items->map(fn (object $item): array => [
                 'item_name' => $item->item_name,
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
+                'nursing_treatment_id' => $nursingTreatmentsByItem[$item->id] ?? '',
             ])->all(),
         ]);
     }
@@ -275,6 +295,13 @@ class BillingController extends Controller
 
             abort_if($billRecord === null, 404);
             $this->ensureEditable($billRecord);
+
+            $treatmentNames = $this->selectedNursingTreatmentNames(
+                $items,
+                (int) $validated['patient_id'],
+                $bill,
+            );
+            $items = $this->applyNursingTreatmentNames($items, $treatmentNames);
 
             if ($totalAmount < (int) $billRecord->amount_paid) {
                 throw ValidationException::withMessages([
@@ -302,6 +329,9 @@ class BillingController extends Controller
                     'updated_at' => $now,
                 ]);
 
+            DB::table('inpatient_nursing_treatments')
+                ->whereIn('bill_item_id', DB::table('bill_items')->select('id')->where('bill_id', $bill))
+                ->update(['bill_item_id' => null, 'updated_at' => $now]);
             DB::table('bill_items')->where('bill_id', $bill)->delete();
             $this->replaceItems($bill, $items, $now);
         });
@@ -434,12 +464,13 @@ class BillingController extends Controller
             'items.*.item_name' => ['required', 'string', 'not_regex:/^\s*$/u', 'max:150'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:10000'],
             'items.*.unit_price' => ['required', 'integer', 'min:1', 'max:999999999999'],
+            'items.*.nursing_treatment_id' => ['nullable', 'integer', 'distinct', 'exists:inpatient_nursing_treatments,id'],
         ];
     }
 
     /**
-     * @param  array<int, array{item_name: string, quantity: int|string, unit_price: int|string}>  $items
-     * @return list<array{item_name: string, quantity: int, unit_price: int}>
+     * @param  array<int, array{item_name: string, quantity: int|string, unit_price: int|string, nursing_treatment_id?: int|string|null}>  $items
+     * @return list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>
      */
     private function normalizeItems(array $items): array
     {
@@ -447,7 +478,66 @@ class BillingController extends Controller
             'item_name' => trim($item['item_name']),
             'quantity' => (int) $item['quantity'],
             'unit_price' => (int) $item['unit_price'],
+            'nursing_treatment_id' => isset($item['nursing_treatment_id']) && $item['nursing_treatment_id'] !== ''
+                ? (int) $item['nursing_treatment_id']
+                : null,
         ], $items);
+    }
+
+    /**
+     * @param  list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>  $items
+     * @return array<int, string>
+     */
+    private function selectedNursingTreatmentNames(array $items, int $patientId, ?int $billId = null): array
+    {
+        $treatmentIds = array_values(array_filter(array_column($items, 'nursing_treatment_id')));
+
+        if ($treatmentIds === []) {
+            return [];
+        }
+
+        $treatments = DB::table('inpatient_nursing_treatments')
+            ->whereIn('id', $treatmentIds)
+            ->where('patient_id', $patientId)
+            ->where(function ($query) use ($billId): void {
+                $query->whereNull('bill_item_id');
+
+                if ($billId !== null) {
+                    $query->orWhereIn(
+                        'bill_item_id',
+                        DB::table('bill_items')->select('id')->where('bill_id', $billId),
+                    );
+                }
+            })
+            ->lockForUpdate()
+            ->get(['id', 'treatment_name']);
+
+        if ($treatments->count() !== count($treatmentIds)) {
+            throw ValidationException::withMessages([
+                'items' => 'Tindakan perawat tidak tersedia untuk pasien ini atau sudah masuk tagihan lain.',
+            ]);
+        }
+
+        return $treatments->mapWithKeys(
+            static fn (object $treatment): array => [(int) $treatment->id => $treatment->treatment_name],
+        )->all();
+    }
+
+    /**
+     * @param  list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>  $items
+     * @param  array<int, string>  $treatmentNames
+     * @return list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>
+     */
+    private function applyNursingTreatmentNames(array $items, array $treatmentNames): array
+    {
+        foreach ($items as &$item) {
+            if ($item['nursing_treatment_id'] !== null) {
+                $item['item_name'] = $treatmentNames[$item['nursing_treatment_id']];
+            }
+        }
+        unset($item);
+
+        return $items;
     }
 
     /**
@@ -462,21 +552,47 @@ class BillingController extends Controller
     }
 
     /**
-     * @param  list<array{item_name: string, quantity: int, unit_price: int}>  $items
+     * @param  list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>  $items
      */
     private function replaceItems(int $billId, array $items, Carbon $now): void
     {
-        DB::table('bill_items')->insert(array_map(
-            static fn (array $item): array => [
+        foreach ($items as $item) {
+            $billItemId = DB::table('bill_items')->insertGetId([
                 'bill_id' => $billId,
                 'item_name' => $item['item_name'],
                 'quantity' => $item['quantity'],
                 'unit_price' => $item['unit_price'],
                 'created_at' => $now,
                 'updated_at' => $now,
-            ],
-            $items,
-        ));
+            ]);
+
+            if ($item['nursing_treatment_id'] !== null) {
+                DB::table('inpatient_nursing_treatments')
+                    ->where('id', $item['nursing_treatment_id'])
+                    ->update(['bill_item_id' => $billItemId, 'updated_at' => $now]);
+            }
+        }
+    }
+
+    private function availableNursingTreatments(int $patientId): Collection
+    {
+        return DB::table('inpatient_nursing_treatments as treatments')
+            ->join('inpatient_admissions as admissions', 'admissions.id', '=', 'treatments.admission_id')
+            ->leftJoin('users', 'users.id', '=', 'treatments.recorded_by_user_id')
+            ->where('treatments.patient_id', $patientId)
+            ->whereNull('treatments.bill_item_id')
+            ->select([
+                'treatments.id',
+                'treatments.treatment_name',
+                'treatments.notes',
+                'treatments.created_at',
+                'admissions.room_number',
+                'admissions.bed_number',
+                'users.email as recorded_by',
+            ])
+            ->orderBy('treatments.created_at')
+            ->orderBy('treatments.id')
+            ->get();
     }
 
     private function loadBill(int $billId): object
@@ -500,8 +616,16 @@ class BillingController extends Controller
         abort_if($bill === null, 404);
 
         $bill->items = DB::table('bill_items')
-            ->where('bill_id', $billId)
-            ->orderBy('id')
+            ->leftJoin('inpatient_nursing_treatments as treatments', 'treatments.bill_item_id', '=', 'bill_items.id')
+            ->leftJoin('users as treatment_nurses', 'treatment_nurses.id', '=', 'treatments.recorded_by_user_id')
+            ->where('bill_items.bill_id', $billId)
+            ->select([
+                'bill_items.*',
+                'treatments.id as nursing_treatment_id',
+                'treatments.notes as nursing_treatment_notes',
+                'treatment_nurses.email as nursing_treatment_recorded_by',
+            ])
+            ->orderBy('bill_items.id')
             ->get();
         $bill->payments = DB::table('bill_payments')
             ->join('users', 'users.id', '=', 'bill_payments.recorded_by_user_id')

@@ -15,7 +15,8 @@
             <div class="staff-billing-item-row" data-item-index="{{ $index }}">
                 <div class="staff-form-field">
                     <label for="item_name_{{ $index }}">Nama item <span>*</span></label>
-                    <input id="item_name_{{ $index }}" name="items[{{ $index }}][item_name]" type="text" maxlength="150" value="{{ $item['item_name'] ?? '' }}" required>
+                    <input id="item_name_{{ $index }}" name="items[{{ $index }}][item_name]" type="text" maxlength="150" value="{{ $item['item_name'] ?? '' }}" @readonly(! empty($item['nursing_treatment_id'])) required>
+                    <input type="hidden" name="items[{{ $index }}][nursing_treatment_id]" data-nursing-treatment-id value="{{ $item['nursing_treatment_id'] ?? '' }}">
                 </div>
                 <div class="staff-form-field">
                     <label for="quantity_{{ $index }}">Jumlah <span>*</span></label>
@@ -36,6 +37,7 @@
         <div class="staff-form-field">
             <label for="item_name___INDEX__">Nama item <span>*</span></label>
             <input id="item_name___INDEX__" name="items[__INDEX__][item_name]" type="text" maxlength="150" required>
+            <input type="hidden" name="items[__INDEX__][nursing_treatment_id]" data-nursing-treatment-id>
         </div>
         <div class="staff-form-field">
             <label for="quantity___INDEX__">Jumlah <span>*</span></label>

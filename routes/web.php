@@ -73,6 +73,7 @@ Route::middleware(['auth', 'staff'])
                 Route::get('/inpatients/{admission}', [NursingController::class, 'show'])->name('inpatients.show');
                 Route::get('/inpatients/{admission}/updates', [NursingController::class, 'refreshUpdates'])->name('inpatients.updates');
                 Route::post('/inpatients/{admission}/updates', [NursingController::class, 'storeUpdate'])->name('inpatients.updates.store');
+                Route::post('/inpatients/{admission}/treatments', [NursingController::class, 'storeTreatment'])->name('inpatients.treatments.store');
             });
 
         Route::middleware('staff-role:Resepsionis,Admin')
