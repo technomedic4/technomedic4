@@ -91,6 +91,34 @@
                         </table>
                     </div>
                 </section>
+
+                <section class="staff-panel">
+                    <div class="staff-panel-heading"><div><h2>Riwayat tindakan perawat</h2><p>Daftar tindakan yang dicatat perawat selama pasien menjalani rawat inap.</p></div></div>
+                    <div class="staff-table-wrap">
+                        <table class="staff-table">
+                            <thead>
+                                <tr>
+                                    <th>Waktu</th>
+                                    <th>Tindakan</th>
+                                    <th>Catatan</th>
+                                    <th>Dicatat oleh</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($nursingTreatments as $treatment)
+                                    <tr>
+                                        <td>{{ $treatment->created_at ? \Illuminate\Support\Carbon::parse($treatment->created_at)->locale('id')->translatedFormat('d F Y, H:i') : '—' }}</td>
+                                        <td>{{ $treatment->treatment_name }}</td>
+                                        <td>{{ $treatment->notes ?: '—' }}</td>
+                                        <td>{{ $treatment->recorded_by ?: '—' }}</td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="4" class="staff-table-empty">Belum ada tindakan perawat yang dicatat untuk pasien ini.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             </div>
         </main>
     </div>

@@ -202,6 +202,87 @@ class NursingController extends Controller
         ]);
     }
 
+    public function reports(Request $request): View
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'from_date' => ['nullable', 'date'],
+            'to_date' => ['nullable', 'date', 'after_or_equal:from_date'],
+        ]);
+        $search = trim((string) ($validated['search'] ?? ''));
+        $fromDate = $validated['from_date'] ?? null;
+        $toDate = $validated['to_date'] ?? null;
+        $notesCollation = in_array(DB::connection()->getDriverName(), ['mariadb', 'mysql'], true)
+            ? ' COLLATE utf8mb4_unicode_ci'
+            : '';
+
+        $careUpdates = DB::table('patient_care_updates as updates')
+            ->join('patient_profiles as patients', 'patients.id', '=', 'updates.patient_id')
+            ->leftJoin('users', 'users.id', '=', 'updates.recorded_by_user_id')
+            ->select([
+                'updates.id as record_id',
+                'updates.patient_id',
+                'patients.full_name as patient_name',
+                'patients.medical_record_number',
+                DB::raw("CASE WHEN updates.inpatient_admission_id IS NULL THEN 'Pemeriksaan awal' ELSE 'Pemantauan rawat inap' END as record_type"),
+                'updates.update_status',
+                DB::raw('NULL as treatment_name'),
+                DB::raw('updates.notes'.$notesCollation.' as notes'),
+                'updates.temperature_celsius',
+                'updates.blood_pressure',
+                'updates.pulse_rate',
+                'updates.respiratory_rate',
+                'updates.oxygen_saturation',
+                'users.email as recorded_by',
+                'updates.created_at',
+            ]);
+
+        $nursingTreatments = DB::table('inpatient_nursing_treatments as treatments')
+            ->join('patient_profiles as patients', 'patients.id', '=', 'treatments.patient_id')
+            ->leftJoin('users', 'users.id', '=', 'treatments.recorded_by_user_id')
+            ->select([
+                'treatments.id as record_id',
+                'treatments.patient_id',
+                'patients.full_name as patient_name',
+                'patients.medical_record_number',
+                DB::raw("'Tindakan perawat' as record_type"),
+                DB::raw('NULL as update_status'),
+                'treatments.treatment_name',
+                DB::raw('treatments.notes'.$notesCollation.' as notes'),
+                DB::raw('NULL as temperature_celsius'),
+                DB::raw('NULL as blood_pressure'),
+                DB::raw('NULL as pulse_rate'),
+                DB::raw('NULL as respiratory_rate'),
+                DB::raw('NULL as oxygen_saturation'),
+                'users.email as recorded_by',
+                'treatments.created_at',
+            ]);
+
+        $reports = DB::query()
+            ->fromSub($careUpdates->unionAll($nursingTreatments), 'nursing_reports')
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($query) use ($search): void {
+                    $query->where('patient_name', 'like', '%'.$search.'%')
+                        ->orWhere('medical_record_number', 'like', '%'.$search.'%')
+                        ->orWhere('treatment_name', 'like', '%'.$search.'%')
+                        ->orWhere('notes', 'like', '%'.$search.'%');
+                });
+            })
+            ->when($fromDate !== null, fn ($query) => $query->whereDate('created_at', '>=', $fromDate))
+            ->when($toDate !== null, fn ($query) => $query->whereDate('created_at', '<=', $toDate))
+            ->orderByDesc('created_at')
+            ->orderByDesc('record_id')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('staff.nursing.reports', [
+            'reports' => $reports,
+            'search' => $search,
+            'fromDate' => $fromDate,
+            'toDate' => $toDate,
+        ]);
+    }
+
     public function show(int $admission): View
     {
         $patientAdmission = $this->activeAdmissions()
@@ -212,44 +293,19 @@ class NursingController extends Controller
 
         $treatments = DB::table('inpatient_nursing_treatments as treatments')
             ->leftJoin('users', 'users.id', '=', 'treatments.recorded_by_user_id')
-            ->leftJoin('bill_items', 'bill_items.id', '=', 'treatments.bill_item_id')
-            ->leftJoin('bills', 'bills.id', '=', 'bill_items.bill_id')
             ->where('treatments.admission_id', $admission)
             ->select([
                 'treatments.treatment_name',
                 'treatments.notes',
                 'treatments.created_at',
                 'users.email as recorded_by',
-                'bills.bill_number',
             ])
             ->orderByDesc('treatments.created_at')
             ->orderByDesc('treatments.id')
             ->get();
 
-        $bills = DB::table('bills')
-            ->where('patient_id', $patientAdmission->patient_id)
-            ->select([
-                'id',
-                'bill_number',
-                'total_amount',
-                'amount_paid',
-                'status',
-                'created_at',
-            ])
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get()
-            ->map(static function (object $bill): object {
-                $bill->balance_due = $bill->status === 'Cancelled'
-                    ? 0
-                    : (int) $bill->total_amount - (int) $bill->amount_paid;
-
-                return $bill;
-            });
-
         return view('staff.nursing.show', [
             'admission' => $patientAdmission,
-            'bills' => $bills,
             'treatments' => $treatments,
             'updates' => $this->careUpdates($admission)->get(),
             'updateStatuses' => self::UPDATE_STATUSES,
@@ -344,7 +400,7 @@ class NursingController extends Controller
 
         return redirect()
             ->route('staff.nursing.inpatients.show', $admission)
-            ->with('success', 'Tindakan pasien berhasil dicatat sebagai bukti untuk validasi tagihan.');
+            ->with('success', 'Tindakan pasien berhasil dicatat.');
     }
 
     public function billingIndex(Request $request): View
@@ -582,8 +638,17 @@ class NursingController extends Controller
             ->leftJoin('appointments', 'appointments.id', '=', 'updates.appointment_id')
             ->leftJoin('users', 'users.id', '=', 'updates.recorded_by_user_id')
             ->where(function ($query): void {
-                $query->whereNull('updates.inpatient_admission_id')
-                    ->orWhereNull('admissions.discharged_at');
+                $query->where(function ($query): void {
+                    $query->whereNull('updates.inpatient_admission_id')
+                        ->whereNotExists(function (Builder $query): void {
+                            $query->selectRaw('1')
+                                ->from('doctor_consultations')
+                                ->whereColumn('doctor_consultations.appointment_id', 'updates.appointment_id');
+                        });
+                })->orWhere(function ($query): void {
+                    $query->whereNotNull('updates.inpatient_admission_id')
+                        ->whereNull('admissions.discharged_at');
+                });
             })
             ->select([
                 'patients.full_name as patient_name',

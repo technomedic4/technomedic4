@@ -132,6 +132,11 @@ class InpatientNursingWorkflowTest extends TestCase
             $table->text('notes')->nullable();
             $table->timestamp('created_at')->nullable();
         });
+
+        Schema::create('doctor_consultations', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('appointment_id')->unique();
+        });
     }
 
     public function test_receptionist_cannot_create_an_admission_without_a_doctor_decision(): void
@@ -324,13 +329,32 @@ class InpatientNursingWorkflowTest extends TestCase
             ->assertSeeText('Catatan pasien masih dirawat.')
             ->assertDontSeeText('Catatan pasien akan checkout.');
 
+        DB::table('inpatient_nursing_treatments')->insert([
+            'admission_id' => $checkedOutAdmissionId,
+            'patient_id' => $checkedOutPatientId,
+            'treatment_name' => 'Perawatan sebelum checkout',
+            'notes' => 'Tindakan tetap tersimpan di arsip.',
+            'recorded_by_user_id' => $nurse->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->get(route('staff.nursing.reports.index', [
+            'search' => 'Tindakan tetap tersimpan',
+        ]))
+            ->assertOk()
+            ->assertSeeText('Perawatan sebelum checkout')
+            ->assertSeeText('Tindakan tetap tersimpan di arsip.')
+            ->assertSeeText('Laporan perawat')
+            ->assertDontSeeText('Catatan pasien masih dirawat.');
+
         $this->assertDatabaseHas('patient_care_updates', [
             'inpatient_admission_id' => $checkedOutAdmissionId,
             'notes' => 'Catatan pasien akan checkout.',
         ]);
     }
 
-    public function test_nurse_can_record_treatments_and_view_patient_billing_summary_without_controls(): void
+    public function test_nurse_can_record_treatments_without_seeing_billing_details(): void
     {
         $nurse = $this->createUser('Perawat');
         $receptionist = $this->createUser('Resepsionis');
@@ -375,12 +399,11 @@ class InpatientNursingWorkflowTest extends TestCase
         $this->get(route('staff.nursing.inpatients.show', $admissionId))
             ->assertOk()
             ->assertSeeText('Perawatan luka')
-            ->assertSeeText('Menunggu validasi resepsionis')
-            ->assertSeeText('INV-INPATIENT-001')
-            ->assertSeeText('Rp 120.000')
-            ->assertSeeText('Rp 30.000')
-            ->assertSeeText('Rp 90.000')
-            ->assertSeeText('Perawat tidak dapat mengubah nominal atau memproses pembayaran')
+            ->assertDontSeeText('Tagihan')
+            ->assertDontSeeText('Status tagihan')
+            ->assertDontSeeText('INV-INPATIENT-001')
+            ->assertDontSeeText('Rp 120.000')
+            ->assertDontSeeText('Rp 30.000')
             ->assertDontSeeText('Catat pembayaran')
             ->assertDontSeeText('Edit tagihan');
     }
@@ -442,6 +465,21 @@ class InpatientNursingWorkflowTest extends TestCase
         $this->get(route('staff.dashboard'))
             ->assertOk()
             ->assertSeeText('Pembaruan kondisi pasien')
+            ->assertSeeText('Pasien sadar dan dapat berkomunikasi.');
+
+        DB::table('doctor_consultations')->insert(['appointment_id' => $appointmentId]);
+        DB::table('appointments')->where('id', $appointmentId)->update(['status' => 'Completed']);
+
+        $this->get(route('staff.dashboard'))
+            ->assertOk()
+            ->assertDontSeeText('Pasien sadar dan dapat berkomunikasi.');
+
+        $this->get(route('staff.nursing.updates'))
+            ->assertOk()
+            ->assertDontSeeText('Pasien sadar dan dapat berkomunikasi.');
+
+        $this->get(route('staff.nursing.reports.index'))
+            ->assertOk()
             ->assertSeeText('Pasien sadar dan dapat berkomunikasi.');
 
         $this->post(route('staff.nursing.assessment-queue.assessments.store', $appointmentId), [
@@ -511,6 +549,9 @@ class InpatientNursingWorkflowTest extends TestCase
             ->assertForbidden();
 
         $this->get(route('staff.nursing.assessment-queue.index'))
+            ->assertForbidden();
+
+        $this->get(route('staff.nursing.reports.index'))
             ->assertForbidden();
     }
 

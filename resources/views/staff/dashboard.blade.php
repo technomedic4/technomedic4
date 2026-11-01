@@ -45,6 +45,10 @@
                         <span class="staff-navigation-icon">◷</span>
                         Jadwal & pasien
                     </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.doctor.referrals.index') }}">
+                        <span class="staff-navigation-icon">↗</span>
+                        Pasien rujukan
+                    </a>
                     <a class="staff-navigation-link" href="{{ route('staff.doctor.teleconsultations.index') }}">
                         <span class="staff-navigation-icon">✉</span>
                         Telekonsultasi
@@ -57,6 +61,10 @@
                     <a class="staff-navigation-link" href="{{ route('staff.nursing.assessment-queue.index') }}">
                         <span class="staff-navigation-icon">◷</span>
                         Antrean pemeriksaan awal
+                    </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.nursing.reports.index') }}">
+                        <span class="staff-navigation-icon">▤</span>
+                        Laporan perawat
                     </a>
                     <a class="staff-navigation-link" href="{{ route('staff.nursing.billing.index') }}">
                         <span class="staff-navigation-icon">▣</span>
@@ -140,6 +148,7 @@
                     @if ($roleLabel === \App\Support\HospitalStaffRole::Doctor->value)
                         <div class="staff-heading-actions">
                             <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.appointments.index') }}">Buka jadwal pasien</a>
+                            <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.referrals.index') }}">Pasien rujukan</a>
                             <a class="staff-action-button staff-button-link" href="{{ route('staff.doctor.teleconsultations.index') }}">Telekonsultasi</a>
                         </div>
                     @elseif ($roleLabel === \App\Support\HospitalStaffRole::Nurse->value)

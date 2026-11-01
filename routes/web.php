@@ -51,6 +51,7 @@ Route::middleware(['auth', 'staff'])
             ->name('doctor.')
             ->group(function (): void {
                 Route::get('/appointments', [DoctorWorkflowController::class, 'index'])->name('appointments.index');
+                Route::get('/referrals', [DoctorWorkflowController::class, 'referrals'])->name('referrals.index');
                 Route::get('/appointments/{appointment}', [DoctorWorkflowController::class, 'show'])->name('appointments.show');
                 Route::post('/appointments/{appointment}/consultation', [DoctorWorkflowController::class, 'storeConsultation'])->name('appointments.consultation.store');
                 Route::get('/teleconsultations', [TeleconsultationController::class, 'index'])->name('teleconsultations.index');
@@ -64,6 +65,7 @@ Route::middleware(['auth', 'staff'])
             ->name('nursing.')
             ->group(function (): void {
                 Route::get('/updates', [NursingController::class, 'refreshDashboardUpdates'])->name('updates');
+                Route::get('/reports', [NursingController::class, 'reports'])->name('reports.index');
                 Route::get('/assessment-queue', [NursingController::class, 'assessmentQueue'])->name('assessment-queue.index');
                 Route::get('/assessment-queue/refresh', [NursingController::class, 'refreshAssessmentQueue'])->name('assessment-queue.refresh');
                 Route::get('/assessment-queue/{appointment}', [NursingController::class, 'showAssessment'])->name('assessment-queue.show');

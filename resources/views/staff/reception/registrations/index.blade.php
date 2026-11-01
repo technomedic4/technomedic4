@@ -57,7 +57,12 @@
                                     @endphp
                                     <tr>
                                         <td><span class="staff-queue-number">{{ str_pad((string) $appointment->queue_number, 3, '0', STR_PAD_LEFT) }}</span></td>
-                                        <td><strong class="staff-patient-name">{{ $appointment->patient_name }}</strong><span class="staff-booking-code">{{ $appointment->medical_record_number ?: $appointment->booking_code }}</span></td>
+                                        <td><strong class="staff-patient-name">{{ $appointment->patient_name }}</strong><span class="staff-booking-code">{{ $appointment->medical_record_number ?: $appointment->booking_code }}</span>
+                                            @if ($appointment->referral_consultation_id !== null)
+                                                <span class="staff-booking-code">Rujukan dari {{ $appointment->referring_doctor_name }}</span>
+                                                <span class="staff-booking-code">{{ $appointment->referral_reason }}</span>
+                                            @endif
+                                        </td>
                                         <td><strong class="staff-patient-name">{{ $appointment->department_name }}</strong><span class="staff-booking-code">{{ $appointment->doctor_name }}</span></td>
                                         <td>{{ substr($appointment->start_time, 0, 5) }}</td>
                                         <td>{{ $appointment->consultation_type === 'Teleconsultation' ? 'Telekonsultasi' : 'Tatap muka' }}</td>

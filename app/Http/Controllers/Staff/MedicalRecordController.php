@@ -79,9 +79,23 @@ class MedicalRecordController extends Controller
             ->orderByDesc('appointments.id')
             ->get();
 
+        $nursingTreatments = DB::table('inpatient_nursing_treatments as treatments')
+            ->leftJoin('users', 'users.id', '=', 'treatments.recorded_by_user_id')
+            ->where('treatments.patient_id', $patient)
+            ->select([
+                'treatments.treatment_name',
+                'treatments.notes',
+                'treatments.created_at',
+                'users.email as recorded_by',
+            ])
+            ->orderByDesc('treatments.created_at')
+            ->orderByDesc('treatments.id')
+            ->get();
+
         return view('staff.medical-records.show', [
             'patient' => $patientRecord,
             'records' => $records,
+            'nursingTreatments' => $nursingTreatments,
         ]);
     }
 }

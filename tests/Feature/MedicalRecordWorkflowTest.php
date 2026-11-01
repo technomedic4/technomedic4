@@ -89,6 +89,17 @@ class MedicalRecordWorkflowTest extends TestCase
             $table->text('notes')->nullable();
             $table->timestamps();
         });
+
+        Schema::create('inpatient_nursing_treatments', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('admission_id');
+            $table->unsignedInteger('patient_id');
+            $table->string('treatment_name', 150);
+            $table->text('notes')->nullable();
+            $table->unsignedInteger('recorded_by_user_id');
+            $table->unsignedInteger('bill_item_id')->nullable()->unique();
+            $table->timestamps();
+        });
     }
 
     public function test_receptionist_can_search_for_a_patient_and_open_their_medical_record(): void
@@ -126,6 +137,45 @@ class MedicalRecordWorkflowTest extends TestCase
             ->assertSeeText('Infeksi saluran pernapasan atas')
             ->assertSeeText('Rawat Jalan')
             ->assertSeeText('Kardiologi');
+    }
+
+    public function test_doctor_can_view_nursing_treatments_for_only_the_selected_patient(): void
+    {
+        $doctor = $this->createUser('Dokter');
+        $nurse = $this->createUser('Perawat');
+        $patientId = $this->createPatient('Maya Pasien', 'RM-00000042');
+        $otherPatientId = $this->createPatient('Pasien Lain', 'RM-00000043');
+
+        DB::table('inpatient_nursing_treatments')->insert([
+            [
+                'admission_id' => 1,
+                'patient_id' => $patientId,
+                'treatment_name' => 'Perawatan luka',
+                'notes' => 'Luka dibersihkan dan ditutup perban.',
+                'recorded_by_user_id' => $nurse->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'admission_id' => 2,
+                'patient_id' => $otherPatientId,
+                'treatment_name' => 'Tindakan pasien lain',
+                'notes' => 'Catatan pasien lain.',
+                'recorded_by_user_id' => $nurse->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($doctor)
+            ->get(route('staff.medical-records.show', $patientId))
+            ->assertOk()
+            ->assertSeeText('Riwayat tindakan perawat')
+            ->assertSeeText('Perawatan luka')
+            ->assertSeeText('Luka dibersihkan dan ditutup perban.')
+            ->assertSeeText($nurse->email)
+            ->assertDontSeeText('Tindakan pasien lain')
+            ->assertDontSeeText('Catatan pasien lain.');
     }
 
     private function createUser(string $roleName): User

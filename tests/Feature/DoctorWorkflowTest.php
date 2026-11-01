@@ -72,6 +72,7 @@ class DoctorWorkflowTest extends TestCase
             $table->date('appointment_date');
             $table->unsignedInteger('queue_number');
             $table->text('initial_complaint')->nullable();
+            $table->unsignedInteger('referral_consultation_id')->nullable();
             $table->string('consultation_type')->default('In-Person');
             $table->string('status');
             $table->timestamp('created_at')->nullable();
@@ -86,6 +87,9 @@ class DoctorWorkflowTest extends TestCase
             $table->text('treatment_plan');
             $table->string('disposition', 20)->nullable();
             $table->unsignedInteger('referral_department_id')->nullable();
+            $table->integer('referral_doctor_id')->nullable();
+            $table->text('referral_reason')->nullable();
+            $table->text('examination_findings')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
         });
@@ -149,7 +153,7 @@ class DoctorWorkflowTest extends TestCase
                 'diagnosis' => 'Infeksi saluran pernapasan atas',
                 'treatment_plan' => 'Istirahat dan terapi sesuai pemeriksaan.',
                 'disposition' => 'Rawat Jalan',
-                'referral_department_id' => 'none',
+                'referral_slot' => 'none',
                 'notes' => 'Kontrol kembali jika keluhan menetap.',
             ])
             ->assertRedirect(route('staff.doctor.appointments.show', $appointmentId))
@@ -163,6 +167,9 @@ class DoctorWorkflowTest extends TestCase
             'treatment_plan' => 'Istirahat dan terapi sesuai pemeriksaan.',
             'disposition' => 'Rawat Jalan',
             'referral_department_id' => null,
+            'referral_doctor_id' => null,
+            'referral_reason' => null,
+            'examination_findings' => null,
             'notes' => 'Kontrol kembali jika keluhan menetap.',
         ]);
         $this->assertDatabaseHas('appointments', [
@@ -183,7 +190,7 @@ class DoctorWorkflowTest extends TestCase
             'diagnosis' => 'Diagnosis kedua',
             'treatment_plan' => 'Rencana kedua',
             'disposition' => 'Rawat Jalan',
-            'referral_department_id' => 'none',
+            'referral_slot' => 'none',
         ])->assertSessionHasErrors('appointment');
 
         $this->assertDatabaseCount('doctor_consultations', 1);
@@ -202,7 +209,7 @@ class DoctorWorkflowTest extends TestCase
             'diagnosis' => 'Diagnosis uji',
             'treatment_plan' => 'Rencana terapi uji',
             'disposition' => 'Rawat Jalan',
-            'referral_department_id' => 'none',
+            'referral_slot' => 'none',
         ])->assertSessionHasErrors('appointment');
 
         $this->assertDatabaseCount('doctor_consultations', 0);
@@ -234,7 +241,7 @@ class DoctorWorkflowTest extends TestCase
             'diagnosis' => 'Diagnosis uji',
             'treatment_plan' => 'Rencana terapi uji',
             'disposition' => 'Rawat Jalan',
-            'referral_department_id' => 'none',
+            'referral_slot' => 'none',
         ])->assertSessionHasErrors('appointment');
 
         $this->assertDatabaseCount('doctor_consultations', 0);
@@ -269,6 +276,9 @@ class DoctorWorkflowTest extends TestCase
             'treatment_plan' => 'Rencana lama.',
             'disposition' => null,
             'referral_department_id' => null,
+            'referral_doctor_id' => null,
+            'referral_reason' => null,
+            'examination_findings' => null,
             'notes' => null,
             'created_at' => now(),
             'updated_at' => now(),
@@ -292,7 +302,7 @@ class DoctorWorkflowTest extends TestCase
                 'diagnosis' => 'Perlu observasi lanjutan.',
                 'treatment_plan' => 'Pemantauan di ruang rawat.',
                 'disposition' => 'Rawat Inap',
-                'referral_department_id' => 'none',
+                'referral_slot' => 'none',
                 'notes' => 'Pantau kondisi setelah masuk.',
             ])
             ->assertRedirect(route('staff.doctor.appointments.show', $appointmentId))
@@ -322,57 +332,80 @@ class DoctorWorkflowTest extends TestCase
             ->assertSeeText('Rawat Inap');
     }
 
-    public function test_general_practitioner_can_record_a_specialist_referral(): void
+    public function test_any_doctor_can_refer_a_patient_to_a_specific_available_specialist(): void
     {
-        [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
-        $specialistDepartmentId = DB::table('departments')->insertGetId(['name' => 'Kardiologi']);
-        $specialistUser = $this->createUser('Dokter');
-        DB::table('doctors')->insert([
-            'user_id' => $specialistUser->id,
-            'department_id' => $specialistDepartmentId,
-            'full_name' => 'Dr. Spesialis',
-            'specialization' => 'Spesialis Jantung dan Pembuluh Darah',
-        ]);
-        $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Rujukan');
+        [$doctor, $scheduleId] = $this->createDoctor('Dr. Neurologi', 'Neurologi', 'Spesialis Neurologi');
+        [$receivingDoctor, $receivingScheduleId] = $this->createDoctor('Dr. Kardiologi', 'Kardiologi', 'Spesialis Kardiologi');
+        $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Rani Pasien');
         $this->createNursingAssessment($appointmentId);
+        $referralSlot = $receivingScheduleId.'|'.Carbon::today()->toDateString();
 
         $this->actingAs($doctor->user)
             ->get(route('staff.doctor.appointments.show', $appointmentId))
             ->assertOk()
-            ->assertSeeText('Rujukan ke dokter spesialis')
-            ->assertSeeText('Kardiologi');
+            ->assertSeeText('Rujukan ke dokter lain')
+            ->assertSeeText('Kardiologi · Dr. Kardiologi');
 
         $this->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
             'diagnosis' => 'Perlu evaluasi jantung.',
             'treatment_plan' => 'Pemeriksaan lanjutan.',
             'disposition' => 'Rawat Jalan',
-            'referral_department_id' => (string) $specialistDepartmentId,
+            'referral_slot' => $referralSlot,
+            'referral_reason' => 'Nyeri dada berulang saat beraktivitas.',
+            'examination_findings' => 'Nyeri tekan tidak ditemukan; EKG awal perlu evaluasi lanjutan.',
         ])
             ->assertRedirect(route('staff.doctor.appointments.show', $appointmentId))
             ->assertSessionHas('success');
 
         $this->assertDatabaseHas('doctor_consultations', [
             'appointment_id' => $appointmentId,
-            'referral_department_id' => $specialistDepartmentId,
+            'referral_department_id' => DB::table('doctors')->where('id', $receivingDoctor->id)->value('department_id'),
+            'referral_doctor_id' => $receivingDoctor->id,
+            'referral_reason' => 'Nyeri dada berulang saat beraktivitas.',
+            'examination_findings' => 'Nyeri tekan tidak ditemukan; EKG awal perlu evaluasi lanjutan.',
         ]);
 
-        $this->get(route('staff.doctor.appointments.show', $appointmentId))
+        $referralConsultationId = DB::table('doctor_consultations')->where('appointment_id', $appointmentId)->value('id');
+        $referralAppointment = DB::table('appointments')->where('referral_consultation_id', $referralConsultationId)->first();
+
+        $this->assertNotNull($referralAppointment);
+        $this->assertSame((int) $receivingScheduleId, (int) $referralAppointment->doctor_schedule_id);
+        $this->assertSame('Pending', $referralAppointment->status);
+        $this->assertSame(
+            (int) $receivingDoctor->id,
+            (int) DB::table('doctor_schedules')
+                ->join('doctors', 'doctors.id', '=', 'doctor_schedules.doctor_id')
+                ->where('doctor_schedules.id', $referralAppointment->doctor_schedule_id)
+                ->value('doctors.id'),
+        );
+
+        $this->actingAs($receivingDoctor->user)
+            ->get(route('staff.doctor.referrals.index'))
             ->assertOk()
-            ->assertSeeText('Rujukan spesialis')
-            ->assertSeeText('Kardiologi');
+            ->assertViewHas('appointments', fn ($appointments): bool => $appointments->count() === 1 && $appointments->total() === 1)
+            ->assertSeeText('Rani Pasien')
+            ->assertSeeText('Dr. Neurologi')
+            ->assertSeeText('Nyeri dada berulang saat beraktivitas.')
+            ->assertSeeText('EKG awal perlu evaluasi lanjutan.');
+
+        $this->get(route('staff.doctor.appointments.show', $referralAppointment->id))
+            ->assertOk()
+            ->assertSeeText('Informasi rujukan')
+            ->assertSeeText('Menunggu check-in pasien')
+            ->assertSeeText('Nyeri dada berulang saat beraktivitas.')
+            ->assertSeeText('Perlu evaluasi jantung.')
+            ->assertSeeText('Tanda vital dari pemeriksaan perawat.');
+
+        $this->actingAs($doctor->user)
+            ->get(route('staff.doctor.referrals.index'))
+            ->assertOk()
+            ->assertDontSeeText('Rani Pasien');
     }
 
-    public function test_general_practitioner_cannot_refer_to_a_department_without_a_specialist(): void
+    public function test_doctor_cannot_select_a_slot_that_is_not_available_for_referral(): void
     {
         [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
-        $otherGeneralDepartmentId = DB::table('departments')->insertGetId(['name' => 'Poli Umum Lain']);
-        $generalUser = $this->createUser('Dokter');
-        DB::table('doctors')->insert([
-            'user_id' => $generalUser->id,
-            'department_id' => $otherGeneralDepartmentId,
-            'full_name' => 'Dr. Umum Lain',
-            'specialization' => 'Dokter Umum',
-        ]);
+        [, $otherScheduleId] = $this->createDoctor('Dr. Umum Lain', 'Poli Umum Lain', 'Dokter Umum');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Rujukan Tidak Valid');
         $this->createNursingAssessment($appointmentId);
 
@@ -381,11 +414,33 @@ class DoctorWorkflowTest extends TestCase
                 'diagnosis' => 'Diagnosis pasien.',
                 'treatment_plan' => 'Rencana pemeriksaan.',
                 'disposition' => 'Rawat Jalan',
-                'referral_department_id' => (string) $otherGeneralDepartmentId,
+                'referral_slot' => $otherScheduleId.'|'.Carbon::today()->toDateString(),
+                'referral_reason' => 'Perlu penanganan dokter lain.',
+                'examination_findings' => 'Hasil pemeriksaan.',
             ])
-            ->assertSessionHasErrors('referral_department_id');
+            ->assertSessionHasErrors('referral_slot');
 
         $this->assertDatabaseCount('doctor_consultations', 0);
+    }
+
+    public function test_doctor_must_add_referral_reason_and_findings_when_referring(): void
+    {
+        [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
+        [, $receivingScheduleId] = $this->createDoctor('Dr. Spesialis', 'Kardiologi', 'Spesialis Kardiologi');
+        $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Rujukan');
+        $this->createNursingAssessment($appointmentId);
+
+        $this->actingAs($doctor->user)
+            ->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
+                'diagnosis' => 'Diagnosis pasien.',
+                'treatment_plan' => 'Rencana pemeriksaan.',
+                'disposition' => 'Rawat Jalan',
+                'referral_slot' => $receivingScheduleId.'|'.Carbon::today()->toDateString(),
+            ])
+            ->assertSessionHasErrors(['referral_reason', 'examination_findings']);
+
+        $this->assertDatabaseCount('doctor_consultations', 0);
+        $this->assertDatabaseCount('appointments', 1);
     }
 
     public function test_doctor_cannot_save_consultation_without_a_valid_disposition(): void
@@ -399,7 +454,7 @@ class DoctorWorkflowTest extends TestCase
                 'diagnosis' => 'Diagnosis pasien.',
                 'treatment_plan' => 'Rencana pemeriksaan.',
                 'disposition' => 'Pulang saja',
-                'referral_department_id' => 'none',
+                'referral_slot' => 'none',
             ])
             ->assertSessionHasErrors('disposition');
 
@@ -421,7 +476,7 @@ class DoctorWorkflowTest extends TestCase
             'diagnosis' => 'Tidak boleh',
             'treatment_plan' => 'Tidak boleh',
             'disposition' => 'Rawat Jalan',
-            'referral_department_id' => 'none',
+            'referral_slot' => 'none',
         ])->assertNotFound();
 
         $this->assertDatabaseCount('doctor_consultations', 0);
@@ -439,19 +494,30 @@ class DoctorWorkflowTest extends TestCase
     /**
      * @return array{object, int}
      */
-    private function createDoctor(string $name): array
-    {
+    private function createDoctor(
+        string $name,
+        string $departmentName = 'Poli Umum',
+        string $specialization = 'Dokter Umum',
+    ): array {
         $user = $this->createUser('Dokter');
-        $departmentId = DB::table('departments')->insertGetId(['name' => 'Poli Umum']);
+        $departmentId = DB::table('departments')->insertGetId(['name' => $departmentName]);
         $doctorId = DB::table('doctors')->insertGetId([
             'user_id' => $user->id,
             'department_id' => $departmentId,
             'full_name' => $name,
-            'specialization' => 'Dokter Umum',
+            'specialization' => $specialization,
         ]);
         $scheduleId = DB::table('doctor_schedules')->insertGetId([
             'doctor_id' => $doctorId,
-            'day_of_week' => 'Senin',
+            'day_of_week' => [
+                1 => 'Senin',
+                2 => 'Selasa',
+                3 => 'Rabu',
+                4 => 'Kamis',
+                5 => 'Jumat',
+                6 => 'Sabtu',
+                7 => 'Minggu',
+            ][Carbon::today()->dayOfWeekIso],
             'start_time' => '08:00:00',
             'end_time' => '12:00:00',
             'quota_limit' => 20,

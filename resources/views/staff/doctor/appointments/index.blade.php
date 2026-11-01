@@ -17,6 +17,7 @@
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL DOKTER</span>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.doctor.appointments.index') }}" aria-current="page"><span class="staff-navigation-icon">◷</span>Jadwal & pasien</a>
+                <a class="staff-navigation-link" href="{{ route('staff.doctor.referrals.index') }}"><span class="staff-navigation-icon">↗</span>Pasien rujukan</a>
                 <a class="staff-navigation-link" href="{{ route('staff.medical-records.index') }}"><span class="staff-navigation-icon">＋</span>Rekam medis</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.teleconsultations.index') }}"><span class="staff-navigation-icon">✉</span>Telekonsultasi</a>
             </nav>
@@ -67,10 +68,15 @@
                                         <td><span class="staff-queue-number">{{ str_pad((string) $appointment->queue_number, 3, '0', STR_PAD_LEFT) }}</span><span class="staff-booking-code">{{ $appointment->booking_code }}</span></td>
                                         <td>{{ substr($appointment->start_time, 0, 5) }}</td>
                                         <td><strong class="staff-patient-name">{{ $appointment->patient_name }}</strong><span class="staff-booking-code">{{ $appointment->medical_record_number ?: 'Nomor rekam medis belum tersedia' }}</span></td>
-                                        <td class="staff-complaint-cell">{{ $appointment->initial_complaint ?: 'Belum ada keluhan yang dicatat.' }}</td>
+                                        <td class="staff-complaint-cell">
+                                            @if ($appointment->referral_consultation_id !== null)<span class="staff-status is-confirmed">Pasien rujukan</span><br>@endif
+                                            {{ $appointment->initial_complaint ?: 'Belum ada keluhan yang dicatat.' }}
+                                        </td>
                                         <td><span class="staff-status {{ $statusClass }}">{{ $statusLabel }}</span></td>
                                         <td>
-                                            @if ($appointment->status === 'Completed' || ($appointment->status === 'Checked-In' && $appointment->nursing_assessment_id !== null))
+                                            @if ($appointment->referral_consultation_id !== null && in_array($appointment->status, ['Pending', 'Confirmed'], true))
+                                                <a class="staff-inline-action" href="{{ route('staff.doctor.appointments.show', $appointment->id) }}">Lihat informasi rujukan</a>
+                                            @elseif ($appointment->status === 'Completed' || ($appointment->status === 'Checked-In' && $appointment->nursing_assessment_id !== null))
                                                 <a class="staff-inline-action" href="{{ route('staff.doctor.appointments.show', $appointment->id) }}">{{ $appointment->status === 'Completed' ? 'Lihat catatan' : 'Mulai pemeriksaan' }}</a>
                                             @elseif ($appointment->status === 'Checked-In')
                                                 <span class="staff-booking-code">Menunggu pemeriksaan awal perawat</span>

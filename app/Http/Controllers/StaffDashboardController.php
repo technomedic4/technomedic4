@@ -165,8 +165,17 @@ class StaffDashboardController extends Controller
                 ->leftJoin('appointments', 'appointments.id', '=', 'updates.appointment_id')
                 ->leftJoin('users', 'users.id', '=', 'updates.recorded_by_user_id')
                 ->where(function ($query): void {
-                    $query->whereNull('updates.inpatient_admission_id')
-                        ->orWhereNull('admissions.discharged_at');
+                    $query->where(function ($query): void {
+                        $query->whereNull('updates.inpatient_admission_id')
+                            ->whereNotExists(function ($query): void {
+                                $query->selectRaw('1')
+                                    ->from('doctor_consultations')
+                                    ->whereColumn('doctor_consultations.appointment_id', 'updates.appointment_id');
+                            });
+                    })->orWhere(function ($query): void {
+                        $query->whereNotNull('updates.inpatient_admission_id')
+                            ->whereNull('admissions.discharged_at');
+                    });
                 })
                 ->select([
                     'patients.full_name as patient_name',

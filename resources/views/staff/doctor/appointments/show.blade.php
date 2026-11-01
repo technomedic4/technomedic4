@@ -17,6 +17,7 @@
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL DOKTER</span>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.appointments.index') }}"><span class="staff-navigation-icon">◷</span>Jadwal & pasien</a>
+                <a class="staff-navigation-link" href="{{ route('staff.doctor.referrals.index') }}"><span class="staff-navigation-icon">↗</span>Pasien rujukan</a>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.medical-records.index') }}" aria-current="page"><span class="staff-navigation-icon">＋</span>Rekam medis</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.teleconsultations.index') }}"><span class="staff-navigation-icon">✉</span>Telekonsultasi</a>
             </nav>
@@ -40,7 +41,7 @@
                 @endif
 
                 <section class="staff-panel staff-encounter-summary">
-                    <div class="staff-panel-heading"><div><h2>{{ $appointment->patient_name }}</h2><p>{{ $appointment->medical_record_number ?: 'Nomor rekam medis belum tersedia' }} · {{ $appointment->department_name }} · {{ $appointment->doctor_name }}</p></div><span class="staff-status {{ $appointment->status === 'Completed' ? 'is-completed' : 'is-arrived' }}">{{ $appointment->status === 'Completed' ? 'Selesai' : 'Sudah check-in' }}</span></div>
+                    <div class="staff-panel-heading"><div><h2>{{ $appointment->patient_name }}</h2><p>{{ $appointment->medical_record_number ?: 'Nomor rekam medis belum tersedia' }} · {{ $appointment->department_name }} · {{ $appointment->doctor_name }}</p></div><span class="staff-status {{ $appointment->status === 'Completed' ? 'is-completed' : (in_array($appointment->status, ['Pending', 'Confirmed'], true) ? 'is-pending' : 'is-arrived') }}">{{ match ($appointment->status) { 'Completed' => 'Selesai', 'Pending' => 'Menunggu check-in', 'Confirmed' => 'Dikonfirmasi', default => 'Sudah check-in' } }}</span></div>
                     <div class="staff-encounter-grid">
                         <div><span class="staff-stat-label">NOMOR ANTREAN</span><strong>{{ str_pad((string) $appointment->queue_number, 3, '0', STR_PAD_LEFT) }}</strong></div>
                         <div><span class="staff-stat-label">TANGGAL & JAM</span><strong>{{ \Illuminate\Support\Carbon::parse($appointment->appointment_date)->locale('id')->translatedFormat('d F Y') }} · {{ substr($appointment->start_time, 0, 5) }}</strong></div>
@@ -50,6 +51,25 @@
                     </div>
                     <div class="staff-encounter-complaint"><span class="staff-stat-label">KELUHAN AWAL DARI LOKET</span><p>{{ $appointment->initial_complaint ?: 'Belum ada keluhan awal yang dicatat.' }}</p></div>
                 </section>
+
+                @if ($referral)
+                    <section class="staff-panel staff-encounter-summary">
+                        <div class="staff-panel-heading"><div><h2>Informasi rujukan</h2><p>Dirujuk oleh {{ $referral->referring_doctor_name }} · {{ $referral->referring_department_name }}</p></div><span class="staff-status is-confirmed">Rujukan dokter</span></div>
+                        <div class="staff-record-field"><span>Alasan rujukan</span><p>{{ $referral->referral_reason }}</p></div>
+                        <div class="staff-record-field"><span>Hasil pemeriksaan dokter pengirim</span><p>{{ $referral->examination_findings }}</p></div>
+                        <div class="staff-record-field"><span>Diagnosis dokter pengirim</span><p>{{ $referral->diagnosis }}</p></div>
+                        <div class="staff-record-field"><span>Rencana tindakan / terapi sebelumnya</span><p>{{ $referral->treatment_plan }}</p></div>
+                        @if ($referral->notes)
+                            <div class="staff-record-field"><span>Catatan tambahan dokter pengirim</span><p>{{ $referral->notes }}</p></div>
+                        @endif
+                        @if ($referralNursingAssessment)
+                            <div class="staff-record-field"><span>Tanda vital dari perawat</span><p>Suhu: {{ $referralNursingAssessment->temperature_celsius ?? '—' }} °C · Tekanan darah: {{ $referralNursingAssessment->blood_pressure ?: '—' }} · Nadi: {{ $referralNursingAssessment->pulse_rate ?: '—' }} · Napas: {{ $referralNursingAssessment->respiratory_rate ?: '—' }} · Saturasi: {{ $referralNursingAssessment->oxygen_saturation !== null ? $referralNursingAssessment->oxygen_saturation.'%' : '—' }}</p></div>
+                            @if ($referralNursingAssessment->notes)
+                                <div class="staff-record-field"><span>Catatan perawat sebelumnya</span><p>{{ $referralNursingAssessment->notes }}</p></div>
+                            @endif
+                        @endif
+                    </section>
+                @endif
 
                 <section class="staff-panel staff-encounter-summary">
                     <div class="staff-panel-heading">
@@ -74,8 +94,10 @@
                         <div class="staff-record-field"><span>Diagnosis</span><p>{{ $consultation->diagnosis }}</p></div>
                         <div class="staff-record-field"><span>Rencana tindakan / terapi</span><p>{{ $consultation->treatment_plan }}</p></div>
                         <div class="staff-record-field"><span>Keputusan dokter</span><p>{{ $consultation->disposition }}</p></div>
-                        @if ($isGeneralPractitioner)
-                            <div class="staff-record-field"><span>Rujukan spesialis</span><p>{{ $consultation->referral_department_name ?: 'Tidak perlu dirujuk' }}</p></div>
+                        <div class="staff-record-field"><span>Rujukan ke dokter</span><p>{{ $consultation->referral_doctor_name ? $consultation->referral_department_name.' · '.$consultation->referral_doctor_name : 'Tidak perlu dirujuk' }}</p></div>
+                        @if ($consultation->referral_doctor_id)
+                            <div class="staff-record-field"><span>Alasan rujukan</span><p>{{ $consultation->referral_reason }}</p></div>
+                            <div class="staff-record-field"><span>Hasil pemeriksaan untuk rujukan</span><p>{{ $consultation->examination_findings }}</p></div>
                         @endif
                         <div class="staff-record-field"><span>Catatan tambahan</span><p>{{ $consultation->notes ?: 'Tidak ada catatan tambahan.' }}</p></div>
                     </section>
@@ -102,18 +124,28 @@
                                     </select>
                                     <small>Memilih rawat inap akan otomatis membuat admisi. Resepsionis dapat melengkapi kamar dan tempat tidur.</small>
                                 </div>
-                                @if ($isGeneralPractitioner)
-                                    <div class="staff-form-field staff-field-wide">
-                                        <label for="referral_department_id">Rujukan ke dokter spesialis <span>*</span></label>
-                                        <select id="referral_department_id" name="referral_department_id" required>
-                                            <option value="">Pilih keputusan rujukan</option>
-                                            <option value="none" @selected(old('referral_department_id') === 'none')>Tidak perlu dirujuk</option>
-                                            @foreach ($referralDepartments as $department)
-                                                <option value="{{ $department->id }}" @selected((string) old('referral_department_id') === (string) $department->id)>{{ $department->name }}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                @endif
+                                <div class="staff-form-field staff-field-wide">
+                                    <label for="referral_slot">Rujukan ke dokter lain</label>
+                                    <select id="referral_slot" name="referral_slot" required>
+                                        <option value="none" @selected(old('referral_slot', 'none') === 'none')>Tidak perlu dirujuk</option>
+                                        @foreach ($referralSlots as $slot)
+                                            <option value="{{ $slot->value }}" @selected(old('referral_slot') === $slot->value)>{{ $slot->label }}</option>
+                                        @endforeach
+                                    </select>
+                                    @if ($referralSlots->isEmpty())
+                                        <small>Belum ada jadwal dokter spesialis lain yang tersedia untuk 60 hari ke depan.</small>
+                                    @else
+                                        <small>Pilih dokter dan jadwal tujuan. Janji baru akan masuk ke antrean dokter tersebut setelah catatan disimpan.</small>
+                                    @endif
+                                </div>
+                                <div class="staff-form-field staff-field-wide">
+                                    <label for="referral_reason">Alasan rujukan</label>
+                                    <textarea id="referral_reason" name="referral_reason" rows="3" maxlength="5000">{{ old('referral_reason') }}</textarea>
+                                </div>
+                                <div class="staff-form-field staff-field-wide">
+                                    <label for="examination_findings">Hasil pemeriksaan yang perlu diketahui dokter tujuan</label>
+                                    <textarea id="examination_findings" name="examination_findings" rows="4" maxlength="5000">{{ old('examination_findings') }}</textarea>
+                                </div>
                                 <div class="staff-form-field staff-field-wide">
                                     <label for="notes">Catatan tambahan <span class="staff-optional-label">Opsional</span></label>
                                     <textarea id="notes" name="notes" rows="3" maxlength="5000">{{ old('notes') }}</textarea>
@@ -124,6 +156,11 @@
                                 <button class="staff-action-button" type="submit">Simpan pemeriksaan & keputusan</button>
                             </div>
                         </form>
+                    </section>
+                @elseif (in_array($appointment->status, ['Pending', 'Confirmed'], true) && $referral)
+                    <section class="staff-alert staff-alert-info" role="status">
+                        <strong>Menunggu check-in pasien</strong>
+                        <p>Informasi rujukan dapat ditinjau sebelum pasien check-in di loket.</p>
                     </section>
                 @else
                     <section class="staff-alert staff-alert-info" role="status">

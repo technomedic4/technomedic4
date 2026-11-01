@@ -73,9 +73,16 @@ class ReceptionWorkflowTest extends TestCase
             $table->date('appointment_date');
             $table->unsignedInteger('queue_number');
             $table->text('initial_complaint')->nullable();
+            $table->unsignedInteger('referral_consultation_id')->nullable();
             $table->string('consultation_type')->default('In-Person');
             $table->string('status');
             $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('doctor_consultations', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('doctor_id');
+            $table->text('referral_reason')->nullable();
         });
 
         Schema::create('check_in_logs', function (Blueprint $table): void {
@@ -226,6 +233,32 @@ class ReceptionWorkflowTest extends TestCase
             'appointment_id' => $appointmentId,
             'verified_by_user_id' => $user->id,
         ]);
+    }
+
+    public function test_receptionist_can_identify_a_referral_in_the_registration_queue(): void
+    {
+        $user = $this->createUser('Resepsionis');
+        $patientId = $this->createPatient('Pasien Rujukan');
+        [$scheduleId, $date] = $this->createSchedule();
+        $appointmentId = $this->createAppointment($patientId, $scheduleId, $date);
+        $referringDoctorId = DB::table('doctors')
+            ->join('doctor_schedules', 'doctor_schedules.doctor_id', '=', 'doctors.id')
+            ->where('doctor_schedules.id', $scheduleId)
+            ->value('doctors.id');
+        $consultationId = DB::table('doctor_consultations')->insertGetId([
+            'doctor_id' => $referringDoctorId,
+            'referral_reason' => 'Perlu pemeriksaan lanjutan.',
+        ]);
+        DB::table('appointments')
+            ->where('id', $appointmentId)
+            ->update(['referral_consultation_id' => $consultationId]);
+
+        $this->actingAs($user)
+            ->get(route('staff.reception.registrations.index', ['date' => $date]))
+            ->assertOk()
+            ->assertSeeText('Pasien Rujukan')
+            ->assertSeeText('Rujukan dari Dr. Sari')
+            ->assertSeeText('Perlu pemeriksaan lanjutan.');
     }
 
     public function test_receptionist_can_cancel_an_unchecked_in_registration(): void

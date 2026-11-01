@@ -20,6 +20,7 @@
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <a class="staff-navigation-link" href="{{ route('staff.nursing.assessment-queue.index') }}"><span class="staff-navigation-icon">◷</span>Antrean pemeriksaan awal</a>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.nursing.inpatients.index') }}"><span class="staff-navigation-icon">＋</span>Pasien rawat inap</a>
+                <a class="staff-navigation-link" href="{{ route('staff.nursing.reports.index') }}"><span class="staff-navigation-icon">▤</span>Laporan perawat</a>
             </nav>
             <form class="staff-logout-form" action="{{ route('logout') }}" method="post">@csrf<button class="staff-logout-button" type="submit">Keluar dari portal</button></form>
         </aside>
@@ -52,7 +53,7 @@
                 </section>
 
                 <section class="staff-form-panel">
-                    <div class="staff-panel-heading"><div><h2>Catat tindakan pasien</h2><p>Catatan tindakan menjadi bukti untuk divalidasi resepsionis saat membuat tagihan. Perawat tidak menentukan nominal.</p></div></div>
+                    <div class="staff-panel-heading"><div><h2>Catat tindakan pasien</h2><p>Catat tindakan yang diberikan kepada pasien selama menjalani rawat inap.</p></div></div>
                     <form class="staff-data-form" action="{{ route('staff.nursing.inpatients.treatments.store', $admission->id) }}" method="post">
                         @csrf
                         <div class="staff-form-grid">
@@ -66,16 +67,16 @@
                             </div>
                         </div>
                         <div class="staff-form-actions">
-                            <button class="staff-action-button" type="submit">Simpan bukti tindakan</button>
+                            <button class="staff-action-button" type="submit">Simpan tindakan</button>
                         </div>
                     </form>
                 </section>
 
                 <section class="staff-panel">
-                    <div class="staff-panel-heading"><div><h2>Riwayat tindakan</h2><p>Tindakan yang belum masuk tagihan menunggu validasi resepsionis.</p></div></div>
+                    <div class="staff-panel-heading"><div><h2>Riwayat tindakan</h2><p>Daftar tindakan yang telah dicatat untuk pasien ini.</p></div></div>
                     <div class="staff-table-wrap">
                         <table class="staff-table">
-                            <thead><tr><th>Waktu</th><th>Tindakan</th><th>Catatan</th><th>Dicatat oleh</th><th>Status tagihan</th></tr></thead>
+                            <thead><tr><th>Waktu</th><th>Tindakan</th><th>Catatan</th><th>Dicatat oleh</th></tr></thead>
                             <tbody>
                                 @forelse ($treatments as $treatment)
                                     <tr>
@@ -83,33 +84,9 @@
                                         <td>{{ $treatment->treatment_name }}</td>
                                         <td>{{ $treatment->notes ?: '—' }}</td>
                                         <td>{{ $treatment->recorded_by ?: '—' }}</td>
-                                        <td>{{ $treatment->bill_number ? 'Masuk tagihan '.$treatment->bill_number : 'Menunggu validasi resepsionis' }}</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="5" class="staff-table-empty">Belum ada tindakan yang dicatat.</td></tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section class="staff-panel staff-billing-panel">
-                    <div class="staff-panel-heading"><div><h2>Ringkasan tagihan pasien</h2><p>Informasi baca saja. Perawat tidak dapat mengubah nominal atau memproses pembayaran.</p></div></div>
-                    <div class="staff-table-wrap">
-                        <table class="staff-table">
-                            <thead><tr><th>No. tagihan</th><th>Tanggal</th><th>Status</th><th>Total</th><th>Terbayar</th><th>Sisa</th></tr></thead>
-                            <tbody>
-                                @forelse ($bills as $bill)
-                                    <tr>
-                                        <td>{{ $bill->bill_number }}</td>
-                                        <td>{{ \Illuminate\Support\Carbon::parse($bill->created_at)->locale('id')->translatedFormat('d F Y') }}</td>
-                                        <td>{{ match ($bill->status) { 'Unpaid' => 'Belum dibayar', 'Partially Paid' => 'Dibayar sebagian', 'Paid' => 'Lunas', 'Cancelled' => 'Dibatalkan', default => $bill->status } }}</td>
-                                        <td>Rp {{ number_format($bill->total_amount, 0, ',', '.') }}</td>
-                                        <td>Rp {{ number_format($bill->amount_paid, 0, ',', '.') }}</td>
-                                        <td>Rp {{ number_format($bill->balance_due, 0, ',', '.') }}</td>
-                                    </tr>
-                                @empty
-                                    <tr><td colspan="6" class="staff-table-empty">Belum ada tagihan untuk pasien ini.</td></tr>
+                                    <tr><td colspan="4" class="staff-table-empty">Belum ada tindakan yang dicatat.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>

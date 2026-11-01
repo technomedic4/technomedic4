@@ -104,6 +104,8 @@ class ReceptionController extends Controller
             ->join('doctor_schedules', 'doctor_schedules.id', '=', 'appointments.doctor_schedule_id')
             ->join('doctors', 'doctors.id', '=', 'doctor_schedules.doctor_id')
             ->join('departments', 'departments.id', '=', 'doctors.department_id')
+            ->leftJoin('doctor_consultations as referrals', 'referrals.id', '=', 'appointments.referral_consultation_id')
+            ->leftJoin('doctors as referring_doctors', 'referring_doctors.id', '=', 'referrals.doctor_id')
             ->whereDate('appointments.appointment_date', $date)
             ->when(
                 isset($validated['status']),
@@ -117,11 +119,14 @@ class ReceptionController extends Controller
                 'appointments.status',
                 'appointments.consultation_type',
                 'appointments.initial_complaint',
+                'appointments.referral_consultation_id',
                 'patient_profiles.full_name as patient_name',
                 'patient_profiles.medical_record_number',
                 'doctors.full_name as doctor_name',
                 'departments.name as department_name',
                 'doctor_schedules.start_time',
+                'referring_doctors.full_name as referring_doctor_name',
+                'referrals.referral_reason',
             ])
             ->orderBy('departments.name')
             ->orderBy('appointments.queue_number')
