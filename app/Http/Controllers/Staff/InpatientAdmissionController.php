@@ -7,6 +7,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class InpatientAdmissionController extends Controller
 {
@@ -21,6 +22,7 @@ class InpatientAdmissionController extends Controller
             ->join('patient_profiles as patients', 'patients.id', '=', 'admissions.patient_id')
             ->join('users as admitted_by', 'admitted_by.id', '=', 'admissions.admitted_by_user_id')
             ->leftJoin('appointments', 'appointments.id', '=', 'admissions.appointment_id')
+            ->leftJoin('users as discharge_approvers', 'discharge_approvers.id', '=', 'admissions.doctor_discharge_approved_by_user_id')
             ->whereNull('admissions.discharged_at')
             ->when($search !== '', function ($query) use ($search): void {
                 $query->where(function ($query) use ($search): void {
@@ -36,10 +38,13 @@ class InpatientAdmissionController extends Controller
                 'admissions.bed_number',
                 'admissions.admission_reason',
                 'admissions.admitted_at',
+                'admissions.appointment_id',
+                'admissions.doctor_discharge_approved_at',
                 'appointments.booking_code',
                 'patients.full_name as patient_name',
                 'patients.medical_record_number',
                 'admitted_by.email as admitted_by',
+                'discharge_approvers.email as discharge_approved_by',
             ])
             ->orderByDesc('admissions.admitted_at')
             ->paginate(15)
@@ -73,16 +78,29 @@ class InpatientAdmissionController extends Controller
 
     public function discharge(Request $request, int $admission): RedirectResponse
     {
-        $updated = DB::table('inpatient_admissions')
-            ->where('id', $admission)
-            ->whereNull('discharged_at')
-            ->update([
-                'discharged_by_user_id' => $request->user()->id,
-                'discharged_at' => now(),
-                'updated_at' => now(),
-            ]);
+        DB::transaction(function () use ($request, $admission): void {
+            $patientAdmission = DB::table('inpatient_admissions')
+                ->where('id', $admission)
+                ->whereNull('discharged_at')
+                ->lockForUpdate()
+                ->first();
 
-        abort_if($updated === 0, 404, 'Data rawat inap aktif tidak ditemukan.');
+            abort_if($patientAdmission === null, 404, 'Data rawat inap aktif tidak ditemukan.');
+
+            if ($patientAdmission->appointment_id !== null && $patientAdmission->doctor_discharge_approved_at === null) {
+                throw ValidationException::withMessages([
+                    'admission' => 'Kepulangan pasien harus divalidasi dokter sebelum proses checkout.',
+                ]);
+            }
+
+            DB::table('inpatient_admissions')
+                ->where('id', $patientAdmission->id)
+                ->update([
+                    'discharged_by_user_id' => $request->user()->id,
+                    'discharged_at' => now(),
+                    'updated_at' => now(),
+                ]);
+        });
 
         return redirect()
             ->route('staff.inpatient-admissions.index')

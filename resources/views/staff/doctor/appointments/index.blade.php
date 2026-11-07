@@ -17,6 +17,7 @@
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL DOKTER</span>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.doctor.appointments.index') }}" aria-current="page"><span class="staff-navigation-icon">◷</span>Jadwal & pasien</a>
+                <a class="staff-navigation-link" href="{{ route('staff.doctor.inpatients.index') }}"><span class="staff-navigation-icon">＋</span>Monitoring rawat inap</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.referrals.index') }}"><span class="staff-navigation-icon">↗</span>Pasien rujukan</a>
                 <a class="staff-navigation-link" href="{{ route('staff.medical-records.index') }}"><span class="staff-navigation-icon">＋</span>Rekam medis</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.teleconsultations.index') }}"><span class="staff-navigation-icon">✉</span>Telekonsultasi</a>
@@ -56,9 +57,11 @@
                                         [$statusLabel, $statusClass] = match ($appointment->status) {
                                             'Pending' => ['Menunggu check-in', 'is-pending'],
                                             'Confirmed' => ['Dikonfirmasi', 'is-confirmed'],
-                                            'Checked-In' => $appointment->nursing_assessment_id !== null
-                                                ? ['Siap diperiksa', 'is-arrived']
-                                                : ['Menunggu pemeriksaan perawat', 'is-confirmed'],
+                                            'Checked-In' => $appointment->patient_condition_id === null
+                                                ? ['Menunggu tanda vital perawat', 'is-pending']
+                                                : ($appointment->patient_condition_recorded_by_user_id === $appointment->doctor_user_id
+                                                    ? ['Siap diperiksa', 'is-arrived']
+                                                    : ['Menunggu validasi dokter', 'is-confirmed']),
                                             'Completed' => ['Selesai', 'is-completed'],
                                             'Cancelled' => ['Dibatalkan', 'is-cancelled'],
                                             default => [$appointment->status, ''],
@@ -76,10 +79,8 @@
                                         <td>
                                             @if ($appointment->referral_consultation_id !== null && in_array($appointment->status, ['Pending', 'Confirmed'], true))
                                                 <a class="staff-inline-action" href="{{ route('staff.doctor.appointments.show', $appointment->id) }}">Lihat informasi rujukan</a>
-                                            @elseif ($appointment->status === 'Completed' || ($appointment->status === 'Checked-In' && $appointment->nursing_assessment_id !== null))
+                                            @elseif ($appointment->status === 'Completed' || $appointment->status === 'Checked-In')
                                                 <a class="staff-inline-action" href="{{ route('staff.doctor.appointments.show', $appointment->id) }}">{{ $appointment->status === 'Completed' ? 'Lihat catatan' : 'Mulai pemeriksaan' }}</a>
-                                            @elseif ($appointment->status === 'Checked-In')
-                                                <span class="staff-booking-code">Menunggu pemeriksaan awal perawat</span>
                                             @else
                                                 <span class="staff-booking-code">Menunggu check-in pasien</span>
                                             @endif
@@ -92,7 +93,7 @@
                         </table>
                     </div>
                 </section>
-                <p class="staff-data-note">Pemeriksaan dokter tersedia setelah pasien check-in dan pemeriksaan awal perawat tersimpan. Menyimpan konsultasi akan menandai kunjungan selesai.</p>
+                <p class="staff-data-note">Dokter memvalidasi kondisi pasien setelah check-in, lalu mencatat konsultasi untuk menyelesaikan kunjungan.</p>
             </div>
         </main>
     </div>

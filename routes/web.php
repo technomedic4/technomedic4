@@ -50,9 +50,15 @@ Route::middleware(['auth', 'staff'])
             ->prefix('doctor')
             ->name('doctor.')
             ->group(function (): void {
+                Route::get('/inpatients', [DoctorWorkflowController::class, 'inpatients'])->name('inpatients.index');
+                Route::get('/inpatients/{admission}', [DoctorWorkflowController::class, 'showInpatient'])->whereNumber('admission')->name('inpatients.show');
+                Route::post('/inpatients/{admission}/evaluations', [DoctorWorkflowController::class, 'storeInpatientEvaluation'])
+                    ->whereNumber('admission')
+                    ->name('inpatients.evaluations.store');
                 Route::get('/appointments', [DoctorWorkflowController::class, 'index'])->name('appointments.index');
                 Route::get('/referrals', [DoctorWorkflowController::class, 'referrals'])->name('referrals.index');
                 Route::get('/appointments/{appointment}', [DoctorWorkflowController::class, 'show'])->name('appointments.show');
+                Route::post('/appointments/{appointment}/patient-condition', [DoctorWorkflowController::class, 'storePatientCondition'])->name('appointments.patient-condition.store');
                 Route::post('/appointments/{appointment}/consultation', [DoctorWorkflowController::class, 'storeConsultation'])->name('appointments.consultation.store');
                 Route::get('/teleconsultations', [TeleconsultationController::class, 'index'])->name('teleconsultations.index');
                 Route::get('/teleconsultations/{appointment}', [TeleconsultationController::class, 'show'])->name('teleconsultations.show');

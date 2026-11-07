@@ -45,6 +45,10 @@
                         <span class="staff-navigation-icon">◷</span>
                         Jadwal & pasien
                     </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.doctor.inpatients.index') }}">
+                        <span class="staff-navigation-icon">＋</span>
+                        Monitoring rawat inap
+                    </a>
                     <a class="staff-navigation-link" href="{{ route('staff.doctor.referrals.index') }}">
                         <span class="staff-navigation-icon">↗</span>
                         Pasien rujukan
@@ -60,7 +64,7 @@
                     </a>
                     <a class="staff-navigation-link" href="{{ route('staff.nursing.assessment-queue.index') }}">
                         <span class="staff-navigation-icon">◷</span>
-                        Antrean pemeriksaan awal
+                        Kondisi pasien
                     </a>
                     <a class="staff-navigation-link" href="{{ route('staff.nursing.reports.index') }}">
                         <span class="staff-navigation-icon">▤</span>
@@ -278,9 +282,11 @@
                                                         'Pending' => ['Menunggu', 'is-pending'],
                                                         'Confirmed' => ['Dikonfirmasi', 'is-confirmed'],
                                                         'Checked-In' => $roleLabel === \App\Support\HospitalStaffRole::Doctor->value
-                                                            ? ($appointment->nursing_assessment_id !== null
-                                                                ? ['Siap diperiksa', 'is-arrived']
-                                                                : ['Menunggu perawat', 'is-confirmed'])
+                                                            ? ($appointment->nursing_assessment_id === null
+                                                                ? ['Menunggu tanda vital perawat', 'is-pending']
+                                                                : ($appointment->patient_condition_recorded_by_user_id === $appointment->doctor_user_id
+                                                                    ? ['Siap diperiksa', 'is-arrived']
+                                                                    : ['Menunggu validasi dokter', 'is-confirmed']))
                                                             : ['Check-in', 'is-arrived'],
                                                         'Completed' => ['Selesai', 'is-completed'],
                                                         'Cancelled' => ['Dibatalkan', 'is-cancelled'],

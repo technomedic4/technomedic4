@@ -17,6 +17,7 @@
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL DOKTER</span>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.appointments.index') }}"><span class="staff-navigation-icon">◷</span>Jadwal & pasien</a>
+                <a class="staff-navigation-link" href="{{ route('staff.doctor.inpatients.index') }}"><span class="staff-navigation-icon">＋</span>Monitoring rawat inap</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.referrals.index') }}"><span class="staff-navigation-icon">↗</span>Pasien rujukan</a>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.medical-records.index') }}" aria-current="page"><span class="staff-navigation-icon">＋</span>Rekam medis</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.teleconsultations.index') }}"><span class="staff-navigation-icon">✉</span>Telekonsultasi</a>
@@ -63,30 +64,68 @@
                             <div class="staff-record-field"><span>Catatan tambahan dokter pengirim</span><p>{{ $referral->notes }}</p></div>
                         @endif
                         @if ($referralNursingAssessment)
-                            <div class="staff-record-field"><span>Tanda vital dari perawat</span><p>Suhu: {{ $referralNursingAssessment->temperature_celsius ?? '—' }} °C · Tekanan darah: {{ $referralNursingAssessment->blood_pressure ?: '—' }} · Nadi: {{ $referralNursingAssessment->pulse_rate ?: '—' }} · Napas: {{ $referralNursingAssessment->respiratory_rate ?: '—' }} · Saturasi: {{ $referralNursingAssessment->oxygen_saturation !== null ? $referralNursingAssessment->oxygen_saturation.'%' : '—' }}</p></div>
+                            <div class="staff-record-field"><span>Tanda vital kunjungan sebelumnya</span><p>Suhu: {{ $referralNursingAssessment->temperature_celsius ?? '—' }} °C · Tekanan darah: {{ $referralNursingAssessment->blood_pressure ?: '—' }} · Nadi: {{ $referralNursingAssessment->pulse_rate ?: '—' }} · Napas: {{ $referralNursingAssessment->respiratory_rate ?: '—' }} · Saturasi: {{ $referralNursingAssessment->oxygen_saturation !== null ? $referralNursingAssessment->oxygen_saturation.'%' : '—' }}</p></div>
                             @if ($referralNursingAssessment->notes)
-                                <div class="staff-record-field"><span>Catatan perawat sebelumnya</span><p>{{ $referralNursingAssessment->notes }}</p></div>
+                                <div class="staff-record-field"><span>Catatan kondisi kunjungan sebelumnya</span><p>{{ $referralNursingAssessment->notes }}</p></div>
                             @endif
                         @endif
                     </section>
                 @endif
 
-                <section class="staff-panel staff-encounter-summary">
-                    <div class="staff-panel-heading">
-                        <div><h2>Pemeriksaan awal perawat</h2><p>{{ $nursingAssessment ? 'Dicatat oleh '.($nursingAssessment->recorded_by ?: 'perawat').' pada '.\Illuminate\Support\Carbon::parse($nursingAssessment->created_at)->locale('id')->translatedFormat('d F Y, H:i') : 'Data asesmen awal tidak tersedia untuk kunjungan lama.' }}</p></div>
-                        @if ($nursingAssessment)<span class="staff-status is-confirmed">{{ $nursingAssessment->update_status }}</span>@endif
-                    </div>
-                    @if ($nursingAssessment)
-                        <div class="staff-encounter-grid">
-                            <div><span class="staff-stat-label">SUHU</span><strong>{{ $nursingAssessment->temperature_celsius !== null ? number_format((float) $nursingAssessment->temperature_celsius, 1).' °C' : '—' }}</strong></div>
-                            <div><span class="staff-stat-label">TEKANAN DARAH</span><strong>{{ $nursingAssessment->blood_pressure ? $nursingAssessment->blood_pressure.' mmHg' : '—' }}</strong></div>
-                            <div><span class="staff-stat-label">NADI</span><strong>{{ $nursingAssessment->pulse_rate !== null ? $nursingAssessment->pulse_rate.' x/menit' : '—' }}</strong></div>
-                            <div><span class="staff-stat-label">FREKUENSI NAPAS</span><strong>{{ $nursingAssessment->respiratory_rate !== null ? $nursingAssessment->respiratory_rate.' x/menit' : '—' }}</strong></div>
-                            <div><span class="staff-stat-label">SATURASI OKSIGEN</span><strong>{{ $nursingAssessment->oxygen_saturation !== null ? $nursingAssessment->oxygen_saturation.'%' : '—' }}</strong></div>
+                @if ($patientCondition)
+                    <section class="staff-panel staff-encounter-summary">
+                        <div class="staff-panel-heading">
+                            <div><h2>Kondisi pasien & tanda vital</h2><p>Terakhir dicatat oleh {{ $patientCondition->recorded_by ?: 'petugas' }} pada {{ \Illuminate\Support\Carbon::parse($patientCondition->created_at)->locale('id')->translatedFormat('d F Y, H:i') }}.</p></div>
+                            <span class="staff-status is-confirmed">{{ $patientCondition->update_status }}</span>
                         </div>
-                        <div class="staff-encounter-complaint"><span class="staff-stat-label">CATATAN PERAWAT</span><p>{{ $nursingAssessment->notes }}</p></div>
-                    @endif
-                </section>
+                        <div class="staff-encounter-grid">
+                            <div><span class="staff-stat-label">SUHU</span><strong>{{ $patientCondition->temperature_celsius !== null ? number_format((float) $patientCondition->temperature_celsius, 1).' °C' : '—' }}</strong></div>
+                            <div><span class="staff-stat-label">TEKANAN DARAH</span><strong>{{ $patientCondition->blood_pressure ? $patientCondition->blood_pressure.' mmHg' : '—' }}</strong></div>
+                            <div><span class="staff-stat-label">NADI</span><strong>{{ $patientCondition->pulse_rate !== null ? $patientCondition->pulse_rate.' x/menit' : '—' }}</strong></div>
+                            <div><span class="staff-stat-label">FREKUENSI NAPAS</span><strong>{{ $patientCondition->respiratory_rate !== null ? $patientCondition->respiratory_rate.' x/menit' : '—' }}</strong></div>
+                            <div><span class="staff-stat-label">SATURASI OKSIGEN</span><strong>{{ $patientCondition->oxygen_saturation !== null ? $patientCondition->oxygen_saturation.'%' : '—' }}</strong></div>
+                        </div>
+                        <div class="staff-encounter-complaint"><span class="staff-stat-label">CATATAN KONDISI PASIEN</span><p>{{ $patientCondition->notes }}</p></div>
+                    </section>
+                @elseif ($appointment->status === 'Completed')
+                    <section class="staff-panel staff-encounter-summary">
+                        <div class="staff-panel-heading"><div><h2>Kondisi pasien & tanda vital</h2><p>Data kondisi pasien tidak tersedia untuk kunjungan ini.</p></div></div>
+                    </section>
+                @endif
+
+                @if ($appointment->status === 'Checked-In')
+                    <section class="staff-form-panel">
+                        <div class="staff-panel-heading"><div><h2>Validasi kondisi pasien</h2><p>Dokter menilai kondisi klinis berdasarkan tanda vital dan catatan awal yang dicatat perawat.</p></div></div>
+                        @if ($patientCondition)
+                            <form class="staff-data-form" action="{{ route('staff.doctor.appointments.patient-condition.store', $appointment->id) }}" method="post">
+                                @csrf
+                                <div class="staff-form-grid">
+                                    <div class="staff-form-field staff-field-wide">
+                                        <span class="staff-stat-label">TANDA VITAL DARI PERAWAT</span>
+                                        <p>Suhu: {{ $patientCondition->temperature_celsius ?? '—' }} °C · Tekanan darah: {{ $patientCondition->blood_pressure ?: '—' }} · Nadi: {{ $patientCondition->pulse_rate ?: '—' }} · Napas: {{ $patientCondition->respiratory_rate ?: '—' }} · Saturasi: {{ $patientCondition->oxygen_saturation !== null ? $patientCondition->oxygen_saturation.'%' : '—' }}</p>
+                                        <p>Catatan perawat: {{ $patientCondition->notes }}</p>
+                                    </div>
+                                    <div class="staff-form-field staff-field-wide">
+                                        <label for="update_status">Kondisi pasien <span>*</span></label>
+                                        <select id="update_status" name="update_status" required>
+                                            <option value="">Pilih kondisi</option>
+                                            @foreach ($patientConditionStatuses as $status)
+                                                <option value="{{ $status }}" @selected(old('update_status', $patientCondition->update_status ?? '') === $status)>{{ $status }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="staff-form-field staff-field-wide">
+                                        <label for="notes">Catatan kondisi pasien <span>*</span></label>
+                                        <textarea id="notes" name="notes" rows="4" maxlength="3000" required>{{ old('notes', $patientCondition->recorded_by_user_id === $appointment->doctor_user_id ? $patientCondition->notes : '') }}</textarea>
+                                    </div>
+                                </div>
+                                <div class="staff-form-actions"><button class="staff-action-button" type="submit">Simpan validasi kondisi</button></div>
+                            </form>
+                        @else
+                            <p class="staff-data-note">Menunggu perawat mencatat tanda vital sebelum dokter dapat memvalidasi kondisi pasien.</p>
+                        @endif
+                    </section>
+                @endif
 
                 @if ($consultation)
                     <section class="staff-form-panel staff-consultation-record">

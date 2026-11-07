@@ -99,17 +99,20 @@ class StaffDashboardController extends Controller
                 [
                     'label' => 'Antrean pemeriksaan awal',
                     'value' => DB::table('appointments as appointments')
+                        ->join('doctor_schedules as schedules', 'schedules.id', '=', 'appointments.doctor_schedule_id')
+                        ->join('doctors', 'doctors.id', '=', 'schedules.doctor_id')
                         ->where('appointments.consultation_type', 'In-Person')
                         ->where('appointments.status', 'Checked-In')
                         ->whereDate('appointments.appointment_date', now()->toDateString())
                         ->whereNotExists(function ($query): void {
                             $query->selectRaw('1')
-                                ->from('patient_care_updates as nursing_assessments')
-                                ->whereColumn('nursing_assessments.appointment_id', 'appointments.id')
-                                ->whereNull('nursing_assessments.inpatient_admission_id');
+                                ->from('patient_care_updates as patient_conditions')
+                                ->whereColumn('patient_conditions.appointment_id', 'appointments.id')
+                                ->whereColumn('patient_conditions.recorded_by_user_id', 'doctors.user_id')
+                                ->whereNull('patient_conditions.inpatient_admission_id');
                         })
                         ->count(),
-                    'description' => 'Pasien check-in yang menunggu perawat',
+                    'description' => 'Pasien check-in yang menunggu pencatatan vital atau pemeriksaan dokter',
                 ],
                 [
                     'label' => 'Pasien rawat inap',
@@ -210,6 +213,8 @@ class StaffDashboardController extends Controller
 
             if ($doctorId !== null) {
                 $appointmentColumns[] = 'nursing_assessments.id as nursing_assessment_id';
+                $appointmentColumns[] = 'nursing_assessments.recorded_by_user_id as patient_condition_recorded_by_user_id';
+                $appointmentColumns[] = 'doctors.user_id as doctor_user_id';
             }
 
             $appointments = (clone $appointmentsQuery)

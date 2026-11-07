@@ -105,6 +105,8 @@ class DoctorWorkflowTest extends TestCase
             $table->timestamp('admitted_at');
             $table->unsignedInteger('discharged_by_user_id')->nullable();
             $table->timestamp('discharged_at')->nullable();
+            $table->unsignedInteger('doctor_discharge_approved_by_user_id')->nullable();
+            $table->timestamp('doctor_discharge_approved_at')->nullable();
             $table->timestamps();
         });
 
@@ -147,6 +149,7 @@ class DoctorWorkflowTest extends TestCase
         [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Konsultasi');
         $this->createNursingAssessment($appointmentId);
+        $this->validatePatientCondition($doctor, $appointmentId);
 
         $this->actingAs($doctor->user)
             ->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
@@ -181,8 +184,8 @@ class DoctorWorkflowTest extends TestCase
         $this->get(route('staff.doctor.appointments.show', $appointmentId))
             ->assertOk()
             ->assertSeeText('Catatan konsultasi tersimpan')
-            ->assertSeeText('Pemeriksaan awal perawat')
-            ->assertSeeText('Tanda vital dari pemeriksaan perawat.')
+            ->assertSeeText('Kondisi pasien & tanda vital')
+            ->assertSeeText('Kondisi pasien telah diperiksa dokter.')
             ->assertSeeText('Infeksi saluran pernapasan atas')
             ->assertSeeText('Istirahat dan terapi sesuai pemeriksaan.');
 
@@ -219,7 +222,7 @@ class DoctorWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_doctor_cannot_open_or_record_a_checked_in_patient_before_nurse_assessment(): void
+    public function test_doctor_can_open_checked_in_patient_and_must_validate_condition_before_consultation(): void
     {
         [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Menunggu Perawat');
@@ -227,15 +230,19 @@ class DoctorWorkflowTest extends TestCase
         $this->actingAs($doctor->user)
             ->get(route('staff.doctor.appointments.index'))
             ->assertOk()
-            ->assertSeeText('Menunggu pemeriksaan perawat')
-            ->assertDontSee(route('staff.doctor.appointments.show', $appointmentId), false);
+            ->assertSeeText('Menunggu tanda vital perawat')
+            ->assertSee(route('staff.doctor.appointments.show', $appointmentId), false);
 
         $this->get(route('staff.dashboard'))
             ->assertOk()
-            ->assertSeeText('Menunggu perawat');
+            ->assertSeeText('Menunggu tanda vital perawat');
 
         $this->get(route('staff.doctor.appointments.show', $appointmentId))
-            ->assertForbidden();
+            ->assertOk()
+            ->assertSeeText('Validasi kondisi pasien')
+            ->assertSeeText('Menunggu perawat mencatat tanda vital')
+            ->assertDontSee('name="temperature_celsius"', false)
+            ->assertDontSeeText('Simpan validasi kondisi');
 
         $this->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
             'diagnosis' => 'Diagnosis uji',
@@ -245,13 +252,46 @@ class DoctorWorkflowTest extends TestCase
         ])->assertSessionHasErrors('appointment');
 
         $this->assertDatabaseCount('doctor_consultations', 0);
+
+        $this->post(route('staff.doctor.appointments.patient-condition.store', $appointmentId), [
+            'update_status' => 'Stabil',
+            'notes' => 'Pasien sadar dan dapat berkomunikasi.',
+        ])->assertSessionHasErrors('appointment');
+
+        $nurse = $this->createUser('Perawat');
+        $this->actingAs($nurse)
+            ->post(route('staff.nursing.assessment-queue.assessments.store', $appointmentId), [
+                'notes' => 'Tanda vital dari pemeriksaan perawat.',
+                'temperature_celsius' => '36.8',
+                'blood_pressure' => '120/80',
+            ])
+            ->assertRedirect(route('staff.nursing.assessment-queue.show', $appointmentId))
+            ->assertSessionHas('success');
+
+        $this->actingAs($doctor->user)
+            ->post(route('staff.doctor.appointments.patient-condition.store', $appointmentId), [
+                'update_status' => 'Stabil',
+                'notes' => 'Pasien sadar dan dapat berkomunikasi.',
+            ])
+            ->assertRedirect(route('staff.doctor.appointments.show', $appointmentId))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('patient_care_updates', [
+            'appointment_id' => $appointmentId,
+            'recorded_by_user_id' => $doctor->user->id,
+            'update_status' => 'Stabil',
+            'temperature_celsius' => 36.8,
+            'blood_pressure' => '120/80',
+            'notes' => 'Pasien sadar dan dapat berkomunikasi.',
+        ]);
+
         $this->assertDatabaseHas('appointments', [
             'id' => $appointmentId,
             'status' => 'Checked-In',
         ]);
     }
 
-    public function test_doctor_can_open_the_appointment_after_a_nurse_assessment_is_saved(): void
+    public function test_doctor_can_view_an_existing_nurse_assessment_before_validating_it(): void
     {
         [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Siap Diperiksa');
@@ -260,8 +300,34 @@ class DoctorWorkflowTest extends TestCase
         $this->actingAs($doctor->user)
             ->get(route('staff.doctor.appointments.show', $appointmentId))
             ->assertOk()
-            ->assertSeeText('Pemeriksaan awal perawat')
-            ->assertSeeText('Tanda vital dari pemeriksaan perawat.');
+            ->assertSeeText('TANDA VITAL DARI PERAWAT')
+            ->assertSeeText('Tanda vital dari pemeriksaan perawat.')
+            ->assertSeeText('Simpan validasi kondisi')
+            ->assertDontSee('name="temperature_celsius"', false);
+    }
+
+    public function test_doctor_can_update_a_previous_assessment_and_becomes_its_validating_recorder(): void
+    {
+        [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
+        $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Perlu Validasi');
+        $this->createNursingAssessment($appointmentId);
+
+        $this->actingAs($doctor->user)
+            ->post(route('staff.doctor.appointments.patient-condition.store', $appointmentId), [
+                'update_status' => 'Perlu Pemantauan',
+                'notes' => 'Pemantauan dokter.',
+                'blood_pressure' => '125/85',
+            ])
+            ->assertRedirect(route('staff.doctor.appointments.show', $appointmentId))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('patient_care_updates', [
+            'appointment_id' => $appointmentId,
+            'recorded_by_user_id' => $doctor->user->id,
+            'update_status' => 'Perlu Pemantauan',
+            'blood_pressure' => '120/80',
+            'notes' => 'Pemantauan dokter.',
+        ]);
     }
 
     public function test_doctor_can_view_a_completed_legacy_consultation_without_a_nurse_assessment(): void
@@ -287,7 +353,7 @@ class DoctorWorkflowTest extends TestCase
         $this->actingAs($doctor->user)
             ->get(route('staff.doctor.appointments.show', $appointmentId))
             ->assertOk()
-            ->assertSeeText('Data asesmen awal tidak tersedia untuk kunjungan lama.')
+            ->assertSeeText('Data kondisi pasien tidak tersedia untuk kunjungan ini.')
             ->assertSeeText('Diagnosis kunjungan lama.');
     }
 
@@ -296,6 +362,7 @@ class DoctorWorkflowTest extends TestCase
         [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Rawat Inap');
         $this->createNursingAssessment($appointmentId);
+        $this->validatePatientCondition($doctor, $appointmentId);
 
         $this->actingAs($doctor->user)
             ->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
@@ -332,12 +399,135 @@ class DoctorWorkflowTest extends TestCase
             ->assertSeeText('Rawat Inap');
     }
 
+    public function test_doctor_sees_only_assigned_inpatients_and_their_monitoring_history(): void
+    {
+        [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
+        [$otherDoctor, $otherScheduleId] = $this->createDoctor('Dr. Lain');
+        $admissionId = $this->createDoctorAdmission($doctor, $scheduleId, 'Pasien Tanggung Jawab');
+        $otherAdmissionId = $this->createDoctorAdmission($otherDoctor, $otherScheduleId, 'Pasien Dokter Lain');
+        $nurse = $this->createUser('Perawat');
+
+        DB::table('patient_care_updates')->insert([
+            'appointment_id' => null,
+            'patient_id' => DB::table('inpatient_admissions')->where('id', $admissionId)->value('patient_id'),
+            'inpatient_admission_id' => $admissionId,
+            'recorded_by_user_id' => $nurse->id,
+            'update_status' => 'Perlu Pemantauan',
+            'blood_pressure' => '125/85',
+            'notes' => 'Pemantauan perawat untuk pasien dokter.',
+            'created_at' => now(),
+        ]);
+        DB::table('patient_care_updates')->insert([
+            'appointment_id' => null,
+            'patient_id' => DB::table('inpatient_admissions')->where('id', $otherAdmissionId)->value('patient_id'),
+            'inpatient_admission_id' => $otherAdmissionId,
+            'recorded_by_user_id' => $nurse->id,
+            'update_status' => 'Stabil',
+            'notes' => 'Data pasien dokter lain.',
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($doctor->user)
+            ->get(route('staff.doctor.inpatients.index'))
+            ->assertOk()
+            ->assertSeeText('Pasien Tanggung Jawab')
+            ->assertDontSeeText('Pasien Dokter Lain');
+
+        $this->get(route('staff.doctor.inpatients.show', $admissionId))
+            ->assertOk()
+            ->assertSeeText('Riwayat pemantauan perawat')
+            ->assertSeeText('Diagnosis dan rencana pengobatan')
+            ->assertDontSee('name="update_status"', false)
+            ->assertDontSee('name="temperature_celsius"', false)
+            ->assertSeeText('Pemantauan perawat untuk pasien dokter.')
+            ->assertSeeText($nurse->email)
+            ->assertSeeText('Diagnosis awal pasien.');
+
+        $this->get(route('staff.doctor.inpatients.show', $otherAdmissionId))
+            ->assertNotFound();
+
+        $this->post(route('staff.doctor.inpatients.evaluations.store', $otherAdmissionId), [
+            'update_status' => 'Stabil',
+            'notes' => 'Tidak boleh mengubah pasien dokter lain.',
+            'diagnosis' => 'Tidak boleh.',
+            'treatment_plan' => 'Tidak boleh.',
+            'discharge_decision' => 'Approve',
+        ])->assertNotFound();
+
+        $this->assertDatabaseMissing('inpatient_admissions', [
+            'id' => $otherAdmissionId,
+            'doctor_discharge_approved_by_user_id' => $doctor->user->id,
+        ]);
+    }
+
+    public function test_doctor_can_record_follow_up_and_approve_inpatient_discharge(): void
+    {
+        [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
+        $admissionId = $this->createDoctorAdmission($doctor, $scheduleId, 'Pasien Evaluasi');
+
+        $this->actingAs($doctor->user)
+            ->post(route('staff.doctor.inpatients.evaluations.store', $admissionId), [
+                'diagnosis' => 'Infeksi membaik, tanpa komplikasi.',
+                'treatment_plan' => 'Lanjutkan terapi oral dan kontrol sesuai jadwal.',
+                'discharge_decision' => 'Approve',
+            ])
+            ->assertRedirect(route('staff.doctor.inpatients.show', $admissionId))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('doctor_consultations', [
+            'diagnosis' => 'Infeksi membaik, tanpa komplikasi.',
+            'treatment_plan' => 'Lanjutkan terapi oral dan kontrol sesuai jadwal.',
+        ]);
+        $this->assertDatabaseCount('patient_care_updates', 0);
+        $this->assertDatabaseHas('inpatient_admissions', [
+            'id' => $admissionId,
+            'doctor_discharge_approved_by_user_id' => $doctor->user->id,
+        ]);
+        self::assertNotNull(DB::table('inpatient_admissions')
+            ->where('id', $admissionId)
+            ->value('doctor_discharge_approved_at'));
+
+        $receptionist = $this->createUser('Resepsionis');
+        $this->actingAs($receptionist)
+            ->get(route('staff.inpatient-admissions.index'))
+            ->assertOk()
+            ->assertSeeText($doctor->user->email)
+            ->assertSeeText('Pasien Evaluasi');
+    }
+
+    public function test_doctor_can_continue_inpatient_care_and_revoke_pending_discharge_approval(): void
+    {
+        [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
+        $admissionId = $this->createDoctorAdmission($doctor, $scheduleId, 'Pasien Lanjut Rawat');
+        DB::table('inpatient_admissions')->where('id', $admissionId)->update([
+            'doctor_discharge_approved_by_user_id' => $doctor->user->id,
+            'doctor_discharge_approved_at' => now(),
+        ]);
+
+        $this->actingAs($doctor->user)
+            ->post(route('staff.doctor.inpatients.evaluations.store', $admissionId), [
+                'diagnosis' => 'Infeksi masih perlu observasi.',
+                'treatment_plan' => 'Lanjutkan terapi dan pemantauan.',
+                'discharge_decision' => 'Continue',
+            ])
+            ->assertRedirect(route('staff.doctor.inpatients.show', $admissionId))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('inpatient_admissions', [
+            'id' => $admissionId,
+            'doctor_discharge_approved_by_user_id' => null,
+            'doctor_discharge_approved_at' => null,
+            'discharged_at' => null,
+        ]);
+    }
+
     public function test_any_doctor_can_refer_a_patient_to_a_specific_available_specialist(): void
     {
         [$doctor, $scheduleId] = $this->createDoctor('Dr. Neurologi', 'Neurologi', 'Spesialis Neurologi');
         [$receivingDoctor, $receivingScheduleId] = $this->createDoctor('Dr. Kardiologi', 'Kardiologi', 'Spesialis Kardiologi');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Rani Pasien');
         $this->createNursingAssessment($appointmentId);
+        $this->validatePatientCondition($doctor, $appointmentId);
         $referralSlot = $receivingScheduleId.'|'.Carbon::today()->toDateString();
 
         $this->actingAs($doctor->user)
@@ -394,7 +584,7 @@ class DoctorWorkflowTest extends TestCase
             ->assertSeeText('Menunggu check-in pasien')
             ->assertSeeText('Nyeri dada berulang saat beraktivitas.')
             ->assertSeeText('Perlu evaluasi jantung.')
-            ->assertSeeText('Tanda vital dari pemeriksaan perawat.');
+            ->assertSeeText('Kondisi pasien telah diperiksa dokter.');
 
         $this->actingAs($doctor->user)
             ->get(route('staff.doctor.referrals.index'))
@@ -408,6 +598,7 @@ class DoctorWorkflowTest extends TestCase
         [, $otherScheduleId] = $this->createDoctor('Dr. Umum Lain', 'Poli Umum Lain', 'Dokter Umum');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Rujukan Tidak Valid');
         $this->createNursingAssessment($appointmentId);
+        $this->validatePatientCondition($doctor, $appointmentId);
 
         $this->actingAs($doctor->user)
             ->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
@@ -429,6 +620,7 @@ class DoctorWorkflowTest extends TestCase
         [, $receivingScheduleId] = $this->createDoctor('Dr. Spesialis', 'Kardiologi', 'Spesialis Kardiologi');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Rujukan');
         $this->createNursingAssessment($appointmentId);
+        $this->validatePatientCondition($doctor, $appointmentId);
 
         $this->actingAs($doctor->user)
             ->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
@@ -448,6 +640,7 @@ class DoctorWorkflowTest extends TestCase
         [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
         $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Tanpa Keputusan');
         $this->createNursingAssessment($appointmentId);
+        $this->validatePatientCondition($doctor, $appointmentId);
 
         $this->actingAs($doctor->user)
             ->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
@@ -488,6 +681,9 @@ class DoctorWorkflowTest extends TestCase
 
         $this->actingAs($receptionist)
             ->get(route('staff.doctor.appointments.index'))
+            ->assertForbidden();
+
+        $this->get(route('staff.doctor.inpatients.index'))
             ->assertForbidden();
     }
 
@@ -563,16 +759,44 @@ class DoctorWorkflowTest extends TestCase
         ]);
     }
 
+    private function createDoctorAdmission(object $doctor, int $scheduleId, string $patientName): int
+    {
+        $appointmentId = $this->createAppointment($scheduleId, 'Completed', $patientName);
+        $patientId = (int) DB::table('appointments')->where('id', $appointmentId)->value('patient_id');
+
+        DB::table('doctor_consultations')->insert([
+            'appointment_id' => $appointmentId,
+            'patient_id' => $patientId,
+            'doctor_id' => $doctor->id,
+            'diagnosis' => 'Diagnosis awal pasien.',
+            'treatment_plan' => 'Instruksi pengobatan awal.',
+            'disposition' => 'Rawat Inap',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return DB::table('inpatient_admissions')->insertGetId([
+            'patient_id' => $patientId,
+            'appointment_id' => $appointmentId,
+            'admission_reason' => 'Diagnosis awal pasien.',
+            'admitted_by_user_id' => $doctor->user->id,
+            'admitted_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     private function createNursingAssessment(int $appointmentId): void
     {
         $patientId = DB::table('appointments')->where('id', $appointmentId)->value('patient_id');
+        $nurse = $this->createUser('Perawat');
 
         DB::table('patient_care_updates')->insert([
             'appointment_id' => $appointmentId,
             'patient_id' => $patientId,
             'inpatient_admission_id' => null,
-            'recorded_by_user_id' => null,
-            'update_status' => 'Stabil',
+            'recorded_by_user_id' => $nurse->id,
+            'update_status' => 'Menunggu Validasi Dokter',
             'temperature_celsius' => 36.8,
             'blood_pressure' => '120/80',
             'pulse_rate' => 76,
@@ -581,5 +805,16 @@ class DoctorWorkflowTest extends TestCase
             'notes' => 'Tanda vital dari pemeriksaan perawat.',
             'created_at' => now(),
         ]);
+    }
+
+    private function validatePatientCondition(object $doctor, int $appointmentId): void
+    {
+        $this->actingAs($doctor->user)
+            ->post(route('staff.doctor.appointments.patient-condition.store', $appointmentId), [
+                'update_status' => 'Stabil',
+                'notes' => 'Kondisi pasien telah diperiksa dokter.',
+            ])
+            ->assertRedirect(route('staff.doctor.appointments.show', $appointmentId))
+            ->assertSessionHas('success');
     }
 }

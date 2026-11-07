@@ -17,6 +17,7 @@
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL DOKTER</span>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.appointments.index') }}"><span class="staff-navigation-icon">◷</span>Jadwal & pasien</a>
+                <a class="staff-navigation-link" href="{{ route('staff.doctor.inpatients.index') }}"><span class="staff-navigation-icon">＋</span>Monitoring rawat inap</a>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.doctor.referrals.index') }}" aria-current="page"><span class="staff-navigation-icon">↗</span>Pasien rujukan</a>
                 <a class="staff-navigation-link" href="{{ route('staff.medical-records.index') }}"><span class="staff-navigation-icon">＋</span>Rekam medis</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.teleconsultations.index') }}"><span class="staff-navigation-icon">✉</span>Telekonsultasi</a>

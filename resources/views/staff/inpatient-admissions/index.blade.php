@@ -26,7 +26,7 @@
             <header class="staff-topbar"><div><span class="staff-topbar-kicker">MODUL RAWAT INAP</span><span class="staff-topbar-role">Admisi pasien</span></div><span class="staff-topbar-date">{{ now()->locale('id')->translatedFormat('l, d F Y') }}</span></header>
             <div class="staff-content">
                 <section class="staff-page-heading">
-                    <div><p class="staff-eyebrow">ADMISI & DISCHARGE</p><h1>Pasien rawat inap</h1><p>Daftar pasien yang diputuskan rawat inap oleh dokter. Lengkapi kamar dan tempat tidur, lalu catat kepulangan pasien.</p></div>
+                    <div><p class="staff-eyebrow">ADMISI & DISCHARGE</p><h1>Pasien rawat inap</h1><p>Daftar pasien yang diputuskan rawat inap oleh dokter. Lengkapi kamar dan tempat tidur, lalu lanjutkan checkout setelah dokter memvalidasi kepulangan.</p></div>
                 </section>
 
                 @if (session('success'))<div class="staff-alert staff-alert-success" role="status">{{ session('success') }}</div>@endif
@@ -45,7 +45,7 @@
                     </form>
                     <div class="staff-table-wrap">
                         <table class="staff-table">
-                            <thead><tr><th>Pasien</th><th>Kamar / tempat tidur</th><th>Alasan masuk</th><th>Kunjungan</th><th>Waktu masuk</th><th>Diputuskan oleh</th><th>Aksi</th></tr></thead>
+                            <thead><tr><th>Pasien</th><th>Kamar / tempat tidur</th><th>Alasan masuk</th><th>Kunjungan</th><th>Waktu masuk</th><th>Diputuskan oleh</th><th>Validasi kepulangan</th><th>Aksi</th></tr></thead>
                             <tbody>
                                 @forelse ($admissions as $admission)
                                     <tr>
@@ -65,21 +65,31 @@
                                         <td>{{ \Illuminate\Support\Carbon::parse($admission->admitted_at)->locale('id')->translatedFormat('d F Y, H:i') }}</td>
                                         <td>{{ $admission->admitted_by }}</td>
                                         <td>
+                                            @if ($admission->appointment_id === null)
+                                                <span class="staff-booking-code">Admisi lama</span>
+                                            @elseif ($admission->doctor_discharge_approved_at)
+                                                {{ $admission->discharge_approved_by ?: 'Dokter' }}<br>
+                                                <span class="staff-booking-code">{{ \Illuminate\Support\Carbon::parse($admission->doctor_discharge_approved_at)->locale('id')->translatedFormat('d F Y, H:i') }}</span>
+                                            @else
+                                                <span class="staff-status is-pending">Menunggu validasi dokter</span>
+                                            @endif
+                                        </td>
+                                        <td>
                                             <form action="{{ route('staff.inpatient-admissions.discharge', $admission->id) }}" method="post" onsubmit="return confirm('Catat pasien ini keluar dari rawat inap?')">
                                                 @csrf
-                                                <button class="staff-small-action is-danger" type="submit">Catat keluar</button>
+                                                <button class="staff-small-action is-danger" type="submit" @disabled($admission->appointment_id !== null && $admission->doctor_discharge_approved_at === null)>Catat keluar</button>
                                             </form>
                                         </td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="7" class="staff-table-empty">Belum ada pasien rawat inap aktif yang diputuskan dokter.</td></tr>
+                                    <tr><td colspan="8" class="staff-table-empty">Belum ada pasien rawat inap aktif yang diputuskan dokter.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
                     </div>
                     @if ($admissions->hasPages())<div class="staff-pagination">{{ $admissions->links() }}</div>@endif
                 </section>
-                <p class="staff-data-note">Keputusan rawat inap berasal dari dokter setelah pemeriksaan lanjutan. Pasien keluar tetap tersimpan sebagai riwayat dan catatan perawatan tidak dihapus.</p>
+                <p class="staff-data-note">Checkout pasien dengan kunjungan dokter hanya dapat dilakukan setelah validasi kepulangan dokter. Pasien keluar tetap tersimpan sebagai riwayat dan catatan perawatan tidak dihapus.</p>
             </div>
         </main>
     </div>

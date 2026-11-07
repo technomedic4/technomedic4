@@ -19,7 +19,7 @@
                 <span class="staff-navigation-label">MENU UTAMA</span>
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL PERAWAT</span>
-                <a class="staff-navigation-link is-active" href="{{ route('staff.nursing.assessment-queue.index') }}" aria-current="page"><span class="staff-navigation-icon">◷</span>Antrean pemeriksaan awal</a>
+                <a class="staff-navigation-link is-active" href="{{ route('staff.nursing.assessment-queue.index') }}" aria-current="page"><span class="staff-navigation-icon">◷</span>Kondisi pasien</a>
                 <a class="staff-navigation-link" href="{{ route('staff.nursing.inpatients.index') }}"><span class="staff-navigation-icon">＋</span>Pasien rawat inap</a>
                 <a class="staff-navigation-link" href="{{ route('staff.nursing.reports.index') }}"><span class="staff-navigation-icon">▤</span>Laporan perawat</a>
             </nav>
@@ -28,12 +28,12 @@
 
         <main class="staff-main">
             <header class="staff-topbar">
-                <div><span class="staff-topbar-kicker">MODUL PERAWAT</span><span class="staff-topbar-role">Antrean pemeriksaan awal</span></div>
+                <div><span class="staff-topbar-kicker">MODUL PERAWAT</span><span class="staff-topbar-role">Informasi kondisi pasien</span></div>
                 <span class="staff-topbar-date">{{ now()->locale('id')->translatedFormat('l, d F Y') }}</span>
             </header>
             <div class="staff-content">
                 <section class="staff-page-heading">
-                    <div><p class="staff-eyebrow">PEMERIKSAAN AWAL PASIEN</p><h1>Antrean pasien check-in</h1><p>Semua pasien rawat jalan maupun calon rawat inap diperiksa perawat sebelum rekam medis diteruskan ke dokter.</p></div>
+                    <div><p class="staff-eyebrow">TANDA VITAL PASIEN</p><h1>Pasien rawat jalan</h1><p>Catat tanda vital pasien yang sudah check-in agar dokter dapat melanjutkan pemeriksaan.</p></div>
                     <div><span class="staff-live-indicator"><span></span>Realtime</span><span id="outpatient-refresh-status" aria-live="polite">Pembaruan setiap 8 detik</span></div>
                 </section>
 
@@ -55,7 +55,7 @@
                     </div>
                     @if ($appointments->hasPages())<div class="staff-pagination">{{ $appointments->links() }}</div>@endif
                 </section>
-                <p class="staff-data-note">Setelah pemeriksaan lanjutan, dokter menentukan rawat jalan atau rawat inap. Pilihan rawat inap akan otomatis tercatat untuk dilengkapi resepsionis.</p>
+                <p class="staff-data-note">Perawat bertugas mencatat tanda vital dan observasi awal. Diagnosis dan penilaian kondisi klinis dilakukan dokter.</p>
             </div>
         </main>
     </div>
