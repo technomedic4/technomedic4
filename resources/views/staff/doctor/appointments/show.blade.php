@@ -19,6 +19,7 @@
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.appointments.index') }}"><span class="staff-navigation-icon">◷</span>Jadwal & pasien</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.inpatients.index') }}"><span class="staff-navigation-icon">＋</span>Monitoring rawat inap</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.referrals.index') }}"><span class="staff-navigation-icon">↗</span>Pasien rujukan</a>
+                <a class="staff-navigation-link" href="{{ route('staff.doctor.laboratory-results.index') }}"><span class="staff-navigation-icon">▤</span>Hasil lab</a>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.medical-records.index') }}" aria-current="page"><span class="staff-navigation-icon">＋</span>Rekam medis</a>
                 <a class="staff-navigation-link" href="{{ route('staff.doctor.teleconsultations.index') }}"><span class="staff-navigation-icon">✉</span>Telekonsultasi</a>
             </nav>
@@ -134,6 +135,50 @@
                         <div class="staff-record-field"><span>Rencana tindakan / terapi</span><p>{{ $consultation->treatment_plan }}</p></div>
                         <div class="staff-record-field"><span>Keputusan dokter</span><p>{{ $consultation->disposition }}</p></div>
                         <div class="staff-record-field"><span>Rujukan ke dokter</span><p>{{ $consultation->referral_doctor_name ? $consultation->referral_department_name.' · '.$consultation->referral_doctor_name : 'Tidak perlu dirujuk' }}</p></div>
+                        @if ($laboratoryOrder)
+                            <div class="staff-record-field">
+                                <span>Rujukan pemeriksaan laboratorium</span>
+                                <p>{{ $laboratoryOrder->status === 'Completed' ? 'Hasil sudah dikirim' : 'Menunggu hasil laboratorium' }}</p>
+                                @forelse ($laboratoryRequestedGroups as $specimen)
+                                    <div class="staff-lab-result-group">
+                                        <strong>{{ $specimen['label'] }}</strong>
+                                        @foreach ($specimen['groups'] as $group)
+                                            <p>{{ $group['label'] }}: {{ implode(', ', $group['tests']) }}</p>
+                                        @endforeach
+                                    </div>
+                                @empty
+                                    <p class="staff-pre-line">{{ $laboratoryOrder->requested_tests }}</p>
+                                @endforelse
+                                @if ($laboratoryOrder->status === 'Completed' && $laboratoryResultGroups !== [])
+                                    <div class="staff-lab-result-groups">
+                                        <strong>Hasil pemeriksaan</strong>
+                                        @foreach ($laboratoryResultGroups as $specimen)
+                                            <div class="staff-lab-result-group">
+                                                <strong>{{ $specimen['label'] }}</strong>
+                                                @foreach ($specimen['groups'] as $group)
+                                                    <h3>{{ $group['label'] }}</h3>
+                                                    <div class="staff-table-wrap">
+                                                        <table class="staff-table">
+                                                            <thead><tr><th>Parameter</th><th>Hasil</th><th>Satuan</th><th>Nilai rujukan</th><th>Keterangan</th></tr></thead>
+                                                            <tbody>
+                                                                @foreach ($group['tests'] as $result)
+                                                                    <tr><td>{{ $result->parameter_name }}</td><td>{{ $result->result_value }}</td><td>{{ $result->unit ?: '—' }}</td><td>{{ $result->reference_range ?: '—' }}</td><td>{{ $result->interpretation === null ? '—' : ($result->interpretation === 'Normal' ? 'Normal' : ($result->interpretation === 'Low' ? 'Rendah' : 'Tinggi')) }}</td></tr>
+                                                                @endforeach
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @elseif ($laboratoryOrder->status === 'Completed' && $laboratoryOrder->results)
+                                    <p class="staff-pre-line">{{ $laboratoryOrder->results }}</p>
+                                @endif
+                                @if ($laboratoryOrder->status === 'Completed')
+                                    <a class="staff-inline-action" href="{{ route('staff.doctor.laboratory-results.show', $laboratoryOrder->id) }}">Buka surat hasil laboratorium</a>
+                                @endif
+                            </div>
+                        @endif
                         @if ($consultation->referral_doctor_id)
                             <div class="staff-record-field"><span>Alasan rujukan</span><p>{{ $consultation->referral_reason }}</p></div>
                             <div class="staff-record-field"><span>Hasil pemeriksaan untuk rujukan</span><p>{{ $consultation->examination_findings }}</p></div>
@@ -184,6 +229,35 @@
                                 <div class="staff-form-field staff-field-wide">
                                     <label for="examination_findings">Hasil pemeriksaan yang perlu diketahui dokter tujuan</label>
                                     <textarea id="examination_findings" name="examination_findings" rows="4" maxlength="5000">{{ old('examination_findings') }}</textarea>
+                                </div>
+                                <div class="staff-form-field staff-field-wide">
+                                    <label class="staff-lab-request-toggle" for="laboratory_requested">
+                                        <input id="laboratory_requested" name="laboratory_requested" type="checkbox" value="1" @checked(old('laboratory_requested'))>
+                                        <span>Rujuk pasien untuk pemeriksaan laboratorium</span>
+                                    </label>
+                                    <small>Aktifkan bila hasil laboratorium diperlukan sebagai penunjang pemeriksaan.</small>
+                                </div>
+                                <fieldset class="staff-form-field staff-field-wide staff-lab-test-selection">
+                                    <legend>Pilih parameter pemeriksaan</legend>
+                                    @foreach ($laboratoryTestGroups as $specimen)
+                                        <section class="staff-lab-test-group">
+                                            <strong>{{ $specimen['label'] }}</strong>
+                                            @foreach ($specimen['groups'] as $group)
+                                                <div class="staff-lab-test-subgroup">
+                                                    <span>{{ $group['label'] }}</span>
+                                                    <div class="staff-lab-test-options">
+                                                        @foreach ($group['tests'] as $code => $label)
+                                                            <label><input type="checkbox" name="requested_test_codes[]" value="{{ $code }}" @checked(in_array($code, (array) old('requested_test_codes', []), true))><span>{{ $label }}</span></label>
+                                                        @endforeach
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </section>
+                                    @endforeach
+                                </fieldset>
+                                <div class="staff-form-field staff-field-wide">
+                                    <label for="laboratory_notes">Informasi klinis untuk laboratorium <span class="staff-optional-label">Opsional</span></label>
+                                    <textarea id="laboratory_notes" name="laboratory_notes" rows="3" maxlength="3000">{{ old('laboratory_notes') }}</textarea>
                                 </div>
                                 <div class="staff-form-field staff-field-wide">
                                     <label for="notes">Catatan tambahan <span class="staff-optional-label">Opsional</span></label>

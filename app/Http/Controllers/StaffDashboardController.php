@@ -4,13 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Support\HospitalStaffRole;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class StaffDashboardController extends Controller
 {
-    public function __invoke(Request $request): View
+    public function __invoke(Request $request): View|RedirectResponse
     {
         $user = $request->user();
         $roleName = DB::table('roles')->where('id', $user->role_id)->value('role_name');
@@ -18,6 +19,10 @@ class StaffDashboardController extends Controller
 
         if ($role === null) {
             abort(403, 'Role akun tidak dikenali.');
+        }
+
+        if ($role === HospitalStaffRole::Laboratory) {
+            return redirect()->route('staff.laboratory.requests.index');
         }
 
         $doctorId = null;

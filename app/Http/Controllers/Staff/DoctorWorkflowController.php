@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Staff;
 
 use App\Http\Controllers\Controller;
 use App\Support\AppointmentRegistrationService;
+use App\Support\LaboratoryTestCatalog;
 use App\Support\PatientConditionStatus;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Query\Builder;
@@ -245,6 +246,58 @@ class DoctorWorkflowController extends Controller
         return view('staff.doctor.referrals.index', compact('appointments', 'search'));
     }
 
+    public function laboratoryResults(Request $request): View
+    {
+        $doctorId = $this->doctorId($request);
+        $labOrders = $this->doctorLaboratoryOrders($doctorId)
+            ->select([
+                'laboratory_orders.id',
+                'laboratory_orders.status',
+                'laboratory_orders.requested_tests',
+                'laboratory_orders.created_at',
+                'appointments.appointment_date',
+                'appointments.booking_code',
+                'patients.full_name as patient_name',
+                'patients.medical_record_number',
+            ])
+            ->orderByDesc('laboratory_orders.created_at')
+            ->orderByDesc('laboratory_orders.id')
+            ->paginate(15);
+
+        return view('staff.doctor.laboratory.index', compact('labOrders'));
+    }
+
+    public function laboratoryReport(Request $request, int $labOrder): View
+    {
+        $doctorId = $this->doctorId($request);
+        $report = $this->doctorLaboratoryOrders($doctorId)
+            ->where('laboratory_orders.id', $labOrder)
+            ->select([
+                'laboratory_orders.*',
+                'appointments.appointment_date',
+                'appointments.booking_code',
+                'patients.full_name as patient_name',
+                'patients.medical_record_number',
+                'patients.gender',
+                'patients.birth_date',
+                'consultations.diagnosis',
+                'referring_doctors.full_name as referring_doctor_name',
+                'referring_departments.name as referring_department_name',
+                'lab_users.email as resulted_by_email',
+            ])
+            ->first();
+
+        abort_if($report === null, 404);
+
+        $laboratoryResults = DB::table('laboratory_results')
+            ->where('laboratory_order_id', $labOrder)
+            ->orderBy('sort_order')
+            ->get();
+        $laboratoryResultGroups = LaboratoryTestCatalog::resultGroups($laboratoryResults);
+
+        return view('staff.doctor.laboratory.report', compact('report', 'laboratoryResultGroups'));
+    }
+
     public function show(Request $request, int $appointment): View
     {
         $doctorId = $this->doctorId($request);
@@ -313,6 +366,24 @@ class DoctorWorkflowController extends Controller
                 'referral_doctors.full_name as referral_doctor_name',
             ])
             ->first();
+        $laboratoryOrder = $consultation === null
+            ? null
+            : DB::table('laboratory_orders')
+                ->where('consultation_id', $consultation->id)
+                ->first();
+        $laboratoryResultGroups = $laboratoryOrder === null
+            ? []
+            : LaboratoryTestCatalog::resultGroups(
+                DB::table('laboratory_results')
+                    ->where('laboratory_order_id', $laboratoryOrder->id)
+                    ->orderBy('sort_order')
+                    ->get()
+            );
+        $laboratoryRequestedGroups = $laboratoryOrder === null || ! $laboratoryOrder->requested_test_codes
+            ? []
+            : LaboratoryTestCatalog::requestedGroups(
+                json_decode($laboratoryOrder->requested_test_codes, true, 512, JSON_THROW_ON_ERROR)
+            );
         $referral = $record->referral_consultation_id === null
             ? null
             : DB::table('doctor_consultations as referrals')
@@ -349,9 +420,13 @@ class DoctorWorkflowController extends Controller
 
         return view('staff.doctor.appointments.show', [
             'appointment' => $record,
+            'laboratoryTestGroups' => LaboratoryTestCatalog::groups(),
             'patientCondition' => $patientCondition,
             'patientConditionStatuses' => PatientConditionStatus::values(),
             'consultation' => $consultation,
+            'laboratoryOrder' => $laboratoryOrder,
+            'laboratoryRequestedGroups' => $laboratoryRequestedGroups,
+            'laboratoryResultGroups' => $laboratoryResultGroups,
             'referral' => $referral,
             'referralNursingAssessment' => $referralNursingAssessment,
             'referralSlots' => $referralSlots,
@@ -453,10 +528,36 @@ class DoctorWorkflowController extends Controller
             'examination_findings' => $referralRequested
                 ? ['required', 'string', 'max:5000']
                 : ['nullable', 'prohibited'],
+            'laboratory_requested' => ['sometimes', 'boolean'],
+            'requested_test_codes' => [
+                Rule::requiredIf($request->boolean('laboratory_requested')),
+                Rule::prohibitedIf(! $request->boolean('laboratory_requested')),
+                'array',
+                'min:1',
+                'max:'.count(LaboratoryTestCatalog::tests()),
+            ],
+            'requested_test_codes.*' => [
+                'required',
+                'string',
+                'distinct',
+                Rule::in(array_keys(LaboratoryTestCatalog::tests())),
+            ],
+            'laboratory_notes' => [
+                Rule::prohibitedIf(! $request->boolean('laboratory_requested')),
+                'nullable',
+                'string',
+                'max:3000',
+            ],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        DB::transaction(function () use ($request, $appointment, $doctorId, $validated, $referralSlots, $appointmentRegistration): void {
+        $requestedTests = $request->boolean('laboratory_requested')
+            ? collect($validated['requested_test_codes'])
+                ->map(fn (string $code): string => LaboratoryTestCatalog::tests()[$code])
+                ->implode("\n")
+            : null;
+
+        DB::transaction(function () use ($request, $appointment, $doctorId, $validated, $referralSlots, $appointmentRegistration, $requestedTests): void {
             $record = $this->doctorAppointments($doctorId)
                 ->where('appointments.id', $appointment)
                 ->where('appointments.consultation_type', 'In-Person')
@@ -547,6 +648,20 @@ class DoctorWorkflowController extends Controller
                 'updated_at' => now(),
             ]);
 
+            if ($request->boolean('laboratory_requested')) {
+                DB::table('laboratory_orders')->insert([
+                    'consultation_id' => $consultationId,
+                    'patient_id' => $record->patient_id,
+                    'referring_doctor_id' => $doctorId,
+                    'requested_tests' => $requestedTests,
+                    'requested_test_codes' => json_encode($validated['requested_test_codes'], JSON_THROW_ON_ERROR),
+                    'clinical_notes' => $validated['laboratory_notes'] ?? null,
+                    'status' => 'Pending',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
             if ($referralSlot !== null) {
                 $referralAppointmentId = $appointmentRegistration->create(
                     (int) $record->patient_id,
@@ -590,6 +705,18 @@ class DoctorWorkflowController extends Controller
             ->join('departments', 'departments.id', '=', 'doctors.department_id')
             ->join('patient_profiles as patients', 'patients.id', '=', 'appointments.patient_id')
             ->where('doctors.id', $doctorId);
+    }
+
+    private function doctorLaboratoryOrders(int $doctorId): Builder
+    {
+        return DB::table('laboratory_orders')
+            ->join('doctor_consultations as consultations', 'consultations.id', '=', 'laboratory_orders.consultation_id')
+            ->join('appointments', 'appointments.id', '=', 'consultations.appointment_id')
+            ->join('patient_profiles as patients', 'patients.id', '=', 'laboratory_orders.patient_id')
+            ->join('doctors as referring_doctors', 'referring_doctors.id', '=', 'laboratory_orders.referring_doctor_id')
+            ->join('departments as referring_departments', 'referring_departments.id', '=', 'referring_doctors.department_id')
+            ->leftJoin('users as lab_users', 'lab_users.id', '=', 'laboratory_orders.resulted_by_user_id')
+            ->where('consultations.doctor_id', $doctorId);
     }
 
     private function doctorInpatientAdmissions(int $doctorId): Builder

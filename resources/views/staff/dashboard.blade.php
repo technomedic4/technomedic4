@@ -97,6 +97,10 @@
                         <span class="staff-navigation-icon">＋</span>
                         Manajemen perawat
                     </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.management.laboratory.index') }}">
+                        <span class="staff-navigation-icon">▤</span>
+                        Manajemen laboratorium
+                    </a>
                 @endif
                 @if (in_array($roleLabel, ['Resepsionis', 'Admin', \App\Support\HospitalStaffRole::Doctor->value], true))
                     <a class="staff-navigation-link" href="{{ route('staff.medical-records.index') }}">
@@ -153,6 +157,7 @@
                         <div class="staff-heading-actions">
                             <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.appointments.index') }}">Buka jadwal pasien</a>
                             <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.referrals.index') }}">Pasien rujukan</a>
+                            <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.laboratory-results.index') }}">Hasil laboratorium</a>
                             <a class="staff-action-button staff-button-link" href="{{ route('staff.doctor.teleconsultations.index') }}">Telekonsultasi</a>
                         </div>
                     @elseif ($roleLabel === \App\Support\HospitalStaffRole::Nurse->value)

@@ -5,6 +5,8 @@ use App\Http\Controllers\Staff\BillingController;
 use App\Http\Controllers\Staff\DoctorManagementController;
 use App\Http\Controllers\Staff\DoctorWorkflowController;
 use App\Http\Controllers\Staff\InpatientAdmissionController;
+use App\Http\Controllers\Staff\LaboratoryController;
+use App\Http\Controllers\Staff\LaboratoryStaffManagementController;
 use App\Http\Controllers\Staff\MedicalRecordController;
 use App\Http\Controllers\Staff\NurseManagementController;
 use App\Http\Controllers\Staff\NursingController;
@@ -57,6 +59,10 @@ Route::middleware(['auth', 'staff'])
                     ->name('inpatients.evaluations.store');
                 Route::get('/appointments', [DoctorWorkflowController::class, 'index'])->name('appointments.index');
                 Route::get('/referrals', [DoctorWorkflowController::class, 'referrals'])->name('referrals.index');
+                Route::get('/laboratory-results', [DoctorWorkflowController::class, 'laboratoryResults'])->name('laboratory-results.index');
+                Route::get('/laboratory-results/{labOrder}', [DoctorWorkflowController::class, 'laboratoryReport'])
+                    ->whereNumber('labOrder')
+                    ->name('laboratory-results.show');
                 Route::get('/appointments/{appointment}', [DoctorWorkflowController::class, 'show'])->name('appointments.show');
                 Route::post('/appointments/{appointment}/patient-condition', [DoctorWorkflowController::class, 'storePatientCondition'])->name('appointments.patient-condition.store');
                 Route::post('/appointments/{appointment}/consultation', [DoctorWorkflowController::class, 'storeConsultation'])->name('appointments.consultation.store');
@@ -64,6 +70,24 @@ Route::middleware(['auth', 'staff'])
                 Route::get('/teleconsultations/{appointment}', [TeleconsultationController::class, 'show'])->name('teleconsultations.show');
                 Route::post('/teleconsultations/{appointment}/messages', [TeleconsultationController::class, 'sendMessage'])->name('teleconsultations.messages.store');
                 Route::post('/teleconsultations/{appointment}/complete', [TeleconsultationController::class, 'complete'])->name('teleconsultations.complete');
+            });
+
+        Route::middleware('staff-role:Laboratorium')
+            ->prefix('laboratory')
+            ->name('laboratory.')
+            ->group(function (): void {
+                Route::get('/requests', [LaboratoryController::class, 'index'])->name('requests.index');
+                Route::get('/requests/blood', [LaboratoryController::class, 'bloodRequests'])->name('requests.blood');
+                Route::get('/requests/urine', [LaboratoryController::class, 'urineRequests'])->name('requests.urine');
+                Route::get('/requests/{labOrder}', [LaboratoryController::class, 'show'])
+                    ->whereNumber('labOrder')
+                    ->name('requests.show');
+                Route::post('/requests/{labOrder}/start', [LaboratoryController::class, 'start'])
+                    ->whereNumber('labOrder')
+                    ->name('requests.start');
+                Route::post('/requests/{labOrder}/result', [LaboratoryController::class, 'storeResult'])
+                    ->whereNumber('labOrder')
+                    ->name('requests.result.store');
             });
 
         Route::middleware('staff-role:Perawat')
@@ -122,6 +146,14 @@ Route::middleware(['auth', 'staff'])
             ->group(function (): void {
                 Route::get('/', [NurseManagementController::class, 'index'])->name('index');
                 Route::post('/', [NurseManagementController::class, 'store'])->name('store');
+            });
+
+        Route::middleware('staff-role:Resepsionis,Admin')
+            ->prefix('management/laboratory')
+            ->name('management.laboratory.')
+            ->group(function (): void {
+                Route::get('/', [LaboratoryStaffManagementController::class, 'index'])->name('index');
+                Route::post('/', [LaboratoryStaffManagementController::class, 'store'])->name('store');
             });
 
         Route::middleware('staff-role:Resepsionis,Admin,Dokter')
