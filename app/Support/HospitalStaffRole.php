@@ -10,6 +10,7 @@ enum HospitalStaffRole: string
     case Doctor = 'Dokter';
     case Finance = 'Keuangan';
     case Pharmacy = 'Farmasi';
+    case Laboratory = 'Laboratorium';
 
     /**
      * @return list<string>

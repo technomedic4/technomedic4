@@ -83,6 +83,8 @@ class InpatientNursingWorkflowTest extends TestCase
             $table->timestamp('admitted_at');
             $table->unsignedInteger('discharged_by_user_id')->nullable();
             $table->timestamp('discharged_at')->nullable();
+            $table->unsignedInteger('doctor_discharge_approved_by_user_id')->nullable();
+            $table->timestamp('doctor_discharge_approved_at')->nullable();
             $table->timestamps();
         });
 
@@ -200,6 +202,43 @@ class InpatientNursingWorkflowTest extends TestCase
         self::assertNotNull(DB::table('inpatient_admissions')->where('id', $admissionId)->value('discharged_at'));
 
         $this->assertDatabaseCount('inpatient_admissions', 1);
+    }
+
+    public function test_receptionist_cannot_check_out_an_admission_before_doctor_approval(): void
+    {
+        $receptionist = $this->createUser('Resepsionis');
+        $patientId = $this->createPatient();
+        $appointmentId = $this->createInPersonAppointment($patientId, 'Completed');
+        $admissionId = $this->createAdmission($patientId, false, $appointmentId);
+
+        $this->actingAs($receptionist)
+            ->post(route('staff.inpatient-admissions.discharge', $admissionId))
+            ->assertSessionHasErrors('admission');
+
+        $this->assertDatabaseHas('inpatient_admissions', [
+            'id' => $admissionId,
+            'discharged_by_user_id' => null,
+            'discharged_at' => null,
+        ]);
+
+        $doctor = $this->createUser('Dokter');
+        DB::table('inpatient_admissions')->where('id', $admissionId)->update([
+            'doctor_discharge_approved_by_user_id' => $doctor->id,
+            'doctor_discharge_approved_at' => now(),
+        ]);
+
+        $this->post(route('staff.inpatient-admissions.discharge', $admissionId))
+            ->assertRedirect(route('staff.inpatient-admissions.index'))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('inpatient_admissions', [
+            'id' => $admissionId,
+            'discharged_by_user_id' => $receptionist->id,
+            'doctor_discharge_approved_by_user_id' => $doctor->id,
+        ]);
+        self::assertNotNull(DB::table('inpatient_admissions')
+            ->where('id', $admissionId)
+            ->value('discharged_at'));
     }
 
     public function test_receptionist_cannot_create_a_readmission_manually_after_discharge(): void
@@ -408,7 +447,7 @@ class InpatientNursingWorkflowTest extends TestCase
             ->assertDontSeeText('Edit tagihan');
     }
 
-    public function test_nurse_records_initial_vitals_for_a_checked_in_patient_before_the_doctor_queue(): void
+    public function test_nurse_records_vital_signs_before_doctor_validates_patient_condition(): void
     {
         $nurse = $this->createUser('Perawat');
         $patientId = $this->createPatient();
@@ -418,15 +457,17 @@ class InpatientNursingWorkflowTest extends TestCase
             ->get(route('staff.nursing.assessment-queue.index'))
             ->assertOk()
             ->assertSeeText('Rina Pasien')
-            ->assertSeeText('Antrean pasien check-in');
+            ->assertSeeText('Menunggu tanda vital perawat')
+            ->assertSeeText('Pasien rawat jalan');
 
         $this->get(route('staff.nursing.assessment-queue.show', $appointmentId))
             ->assertOk()
-            ->assertSeeText('Dokter akan menentukan tindak lanjut')
-            ->assertSeeText('Catat pemeriksaan awal');
+            ->assertSeeText('Menunggu tanda vital perawat')
+            ->assertSeeText('Catat tanda vital pasien')
+            ->assertSee('name="temperature_celsius"', false)
+            ->assertDontSeeText('Simpan validasi kondisi');
 
         $this->post(route('staff.nursing.assessment-queue.assessments.store', $appointmentId), [
-            'update_status' => 'Stabil',
             'notes' => 'Pasien sadar dan dapat berkomunikasi.',
             'temperature_celsius' => '36.8',
             'blood_pressure' => '120/80',
@@ -440,8 +481,41 @@ class InpatientNursingWorkflowTest extends TestCase
         $this->assertDatabaseHas('patient_care_updates', [
             'appointment_id' => $appointmentId,
             'patient_id' => $patientId,
-            'inpatient_admission_id' => null,
             'recorded_by_user_id' => $nurse->id,
+            'update_status' => 'Menunggu Validasi Dokter',
+            'temperature_celsius' => 36.8,
+            'blood_pressure' => '120/80',
+            'pulse_rate' => 76,
+            'respiratory_rate' => 18,
+            'oxygen_saturation' => 98,
+            'notes' => 'Pasien sadar dan dapat berkomunikasi.',
+        ]);
+
+        $this->post(route('staff.doctor.appointments.patient-condition.store', $appointmentId), [
+            'update_status' => 'Stabil',
+            'notes' => 'Perawat tidak boleh memvalidasi.',
+        ])->assertForbidden();
+
+        $doctorUserId = DB::table('doctors')
+            ->join('doctor_schedules', 'doctor_schedules.doctor_id', '=', 'doctors.id')
+            ->join('appointments', 'appointments.doctor_schedule_id', '=', 'doctor_schedules.id')
+            ->where('appointments.id', $appointmentId)
+            ->value('doctors.user_id');
+        $doctor = User::query()->findOrFail($doctorUserId);
+
+        $this->actingAs($doctor)
+            ->post(route('staff.doctor.appointments.patient-condition.store', $appointmentId), [
+                'update_status' => 'Stabil',
+                'notes' => 'Pasien sadar dan dapat berkomunikasi.',
+            ])
+            ->assertRedirect(route('staff.doctor.appointments.show', $appointmentId))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('patient_care_updates', [
+            'appointment_id' => $appointmentId,
+            'patient_id' => $patientId,
+            'inpatient_admission_id' => null,
+            'recorded_by_user_id' => $doctor->id,
             'update_status' => 'Stabil',
             'temperature_celsius' => 36.8,
             'blood_pressure' => '120/80',
@@ -452,19 +526,21 @@ class InpatientNursingWorkflowTest extends TestCase
         ]);
         $this->assertDatabaseCount('inpatient_admissions', 0);
 
-        $this->get(route('staff.nursing.assessment-queue.show', $appointmentId))
+        $this->actingAs($nurse)
+            ->get(route('staff.nursing.assessment-queue.show', $appointmentId))
             ->assertOk()
-            ->assertSeeText('Siap diperiksa dokter')
-            ->assertSeeText('Pemeriksaan awal tersimpan')
-            ->assertSeeText('120/80');
+            ->assertSeeText('Sudah diperiksa dokter')
+            ->assertSeeText('120/80')
+            ->assertDontSeeText('Simpan validasi kondisi');
 
         $this->get(route('staff.nursing.assessment-queue.index'))
             ->assertOk()
-            ->assertDontSeeText('Rina Pasien');
+            ->assertSeeText('Rina Pasien')
+            ->assertSeeText('Sudah divalidasi dokter');
 
         $this->get(route('staff.dashboard'))
             ->assertOk()
-            ->assertSeeText('Pembaruan kondisi pasien')
+            ->assertSeeText('Pembaruan kondisi hari ini')
             ->assertSeeText('Pasien sadar dan dapat berkomunikasi.');
 
         DB::table('doctor_consultations')->insert(['appointment_id' => $appointmentId]);
@@ -483,7 +559,6 @@ class InpatientNursingWorkflowTest extends TestCase
             ->assertSeeText('Pasien sadar dan dapat berkomunikasi.');
 
         $this->post(route('staff.nursing.assessment-queue.assessments.store', $appointmentId), [
-            'update_status' => 'Stabil',
             'notes' => 'Asesmen duplikat.',
             'temperature_celsius' => '36.8',
         ])->assertSessionHasErrors('appointment');
@@ -491,7 +566,7 @@ class InpatientNursingWorkflowTest extends TestCase
         $this->assertDatabaseCount('patient_care_updates', 1);
     }
 
-    public function test_nurse_cannot_assess_before_check_in_or_without_a_vital_sign(): void
+    public function test_nurse_cannot_record_vitals_before_check_in_or_without_vital_values(): void
     {
         $nurse = $this->createUser('Perawat');
         $patientId = $this->createPatient();
@@ -502,7 +577,6 @@ class InpatientNursingWorkflowTest extends TestCase
             ->assertNotFound();
 
         $this->post(route('staff.nursing.assessment-queue.assessments.store', $appointmentId), [
-            'update_status' => 'Stabil',
             'notes' => 'Pasien menunggu check-in.',
             'temperature_celsius' => '36.8',
         ])->assertSessionHasErrors('appointment');
@@ -510,7 +584,6 @@ class InpatientNursingWorkflowTest extends TestCase
         $checkedInAppointmentId = $this->createInPersonAppointment($patientId, 'Checked-In');
 
         $this->post(route('staff.nursing.assessment-queue.assessments.store', $checkedInAppointmentId), [
-            'update_status' => 'Stabil',
             'notes' => 'Belum ada tanda vital.',
         ])->assertSessionHasErrors('temperature_celsius');
 
@@ -689,12 +762,13 @@ class InpatientNursingWorkflowTest extends TestCase
         ]);
     }
 
-    private function createAdmission(int $patientId, bool $discharged = false): int
+    private function createAdmission(int $patientId, bool $discharged = false, ?int $appointmentId = null): int
     {
         $admissionUserId = $this->createUser('Resepsionis')->id;
 
         return DB::table('inpatient_admissions')->insertGetId([
             'patient_id' => $patientId,
+            'appointment_id' => $appointmentId,
             'room_number' => '201',
             'bed_number' => 'B',
             'admission_reason' => 'Observasi.',

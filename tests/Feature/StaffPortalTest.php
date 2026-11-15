@@ -49,6 +49,7 @@ class StaffPortalTest extends TestCase
             $table->increments('id');
             $table->unsignedInteger('bill_id');
             $table->unsignedBigInteger('amount');
+            $table->string('status', 20)->default('Approved');
             $table->timestamp('paid_at');
         });
 
@@ -86,6 +87,7 @@ class StaffPortalTest extends TestCase
             $table->unsignedInteger('patient_id');
             $table->unsignedInteger('appointment_id')->nullable();
             $table->unsignedInteger('inpatient_admission_id')->nullable();
+            $table->unsignedInteger('recorded_by_user_id')->nullable();
             $table->string('update_status');
             $table->text('notes')->nullable();
             $table->timestamp('created_at')->nullable();

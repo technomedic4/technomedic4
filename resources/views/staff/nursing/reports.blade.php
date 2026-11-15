@@ -19,7 +19,7 @@
                 <span class="staff-navigation-label">MENU UTAMA</span>
                 <a class="staff-navigation-link" href="{{ route('staff.dashboard') }}"><span class="staff-navigation-icon">⌂</span>Dashboard</a>
                 <span class="staff-navigation-label staff-navigation-spaced">MODUL PERAWAT</span>
-                <a class="staff-navigation-link" href="{{ route('staff.nursing.assessment-queue.index') }}"><span class="staff-navigation-icon">◷</span>Antrean pemeriksaan awal</a>
+                <a class="staff-navigation-link" href="{{ route('staff.nursing.assessment-queue.index') }}"><span class="staff-navigation-icon">◷</span>Kondisi pasien</a>
                 <a class="staff-navigation-link" href="{{ route('staff.nursing.inpatients.index') }}"><span class="staff-navigation-icon">＋</span>Pasien rawat inap</a>
                 <a class="staff-navigation-link is-active" href="{{ route('staff.nursing.reports.index') }}" aria-current="page"><span class="staff-navigation-icon">▤</span>Laporan perawat</a>
             </nav>
@@ -33,7 +33,7 @@
             </header>
             <div class="staff-content">
                 <section class="staff-page-heading">
-                    <div><p class="staff-eyebrow">ARSIP CATATAN KLINIS</p><h1>Laporan perawat</h1><p>Riwayat pemeriksaan awal, pemantauan rawat inap, dan tindakan perawat, termasuk pasien yang sudah checkout.</p></div>
+                    <div><p class="staff-eyebrow">ARSIP CATATAN KLINIS</p><h1>Laporan perawat</h1><p>Riwayat kondisi pasien rawat jalan, pemantauan rawat inap, dan tindakan perawat, termasuk pasien yang sudah checkout.</p></div>
                 </section>
 
                 <section class="staff-panel">

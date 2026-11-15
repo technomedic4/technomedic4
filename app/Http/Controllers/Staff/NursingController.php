@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Staff;
 
 use App\Http\Controllers\Controller;
+use App\Support\PatientConditionStatus;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -14,14 +15,6 @@ use Illuminate\Validation\ValidationException;
 
 class NursingController extends Controller
 {
-    private const UPDATE_STATUSES = [
-        'Stabil',
-        'Membaik',
-        'Perlu Pemantauan',
-        'Memburuk',
-        'Kritis',
-    ];
-
     public function assessmentQueue(Request $request): View
     {
         $validated = $request->validate([
@@ -31,7 +24,7 @@ class NursingController extends Controller
         $date = $validated['date'] ?? now()->toDateString();
         $search = trim((string) ($validated['search'] ?? ''));
 
-        $appointments = $this->waitingAssessments($date, $search)
+        $appointments = $this->inPersonAppointments($date, $search)
             ->orderBy('appointments.queue_number')
             ->paginate(15)
             ->withQueryString();
@@ -58,7 +51,7 @@ class NursingController extends Controller
         $search = trim((string) ($validated['search'] ?? ''));
 
         return view('staff.nursing.partials.assessment-queue', [
-            'appointments' => $this->waitingAssessments($date, $search)
+            'appointments' => $this->inPersonAppointments($date, $search)
                 ->orderBy('appointments.queue_number')
                 ->paginate(15)
                 ->withQueryString(),
@@ -86,6 +79,7 @@ class NursingController extends Controller
                 'updates.oxygen_saturation',
                 'updates.notes',
                 'updates.created_at',
+                'updates.recorded_by_user_id',
                 'users.email as recorded_by',
             ])
             ->first();
@@ -93,14 +87,12 @@ class NursingController extends Controller
         return view('staff.nursing.assessment', [
             'appointment' => $record,
             'assessment' => $assessment,
-            'updateStatuses' => self::UPDATE_STATUSES,
         ]);
     }
 
     public function storeAssessment(Request $request, int $appointment): RedirectResponse
     {
         $validated = $request->validate([
-            'update_status' => ['required', Rule::in(self::UPDATE_STATUSES)],
             'notes' => ['required', 'string', 'max:3000'],
             'temperature_celsius' => ['nullable', 'numeric', 'between:30,45'],
             'blood_pressure' => ['nullable', 'regex:/\A\d{2,3}\/\d{2,3}\z/'],
@@ -126,35 +118,38 @@ class NursingController extends Controller
 
         DB::transaction(function () use ($request, $appointment, $validated): void {
             $record = DB::table('appointments')
-                ->where('id', $appointment)
-                ->where('consultation_type', 'In-Person')
-                ->where('status', 'Checked-In')
+                ->join('doctor_schedules as schedules', 'schedules.id', '=', 'appointments.doctor_schedule_id')
+                ->join('doctors', 'doctors.id', '=', 'schedules.doctor_id')
+                ->where('appointments.id', $appointment)
+                ->where('appointments.consultation_type', 'In-Person')
+                ->where('appointments.status', 'Checked-In')
+                ->select(['appointments.id', 'appointments.patient_id', 'doctors.user_id as doctor_user_id'])
                 ->lockForUpdate()
                 ->first();
 
             if ($record === null) {
                 throw ValidationException::withMessages([
-                    'appointment' => 'Asesmen hanya dapat dicatat untuk pasien yang sudah check-in.',
+                    'appointment' => 'Tanda vital hanya dapat dicatat untuk pasien rawat jalan yang sudah check-in.',
                 ]);
             }
 
-            $assessmentExists = DB::table('patient_care_updates')
+            $existingAssessment = DB::table('patient_care_updates')
                 ->where('appointment_id', $record->id)
                 ->whereNull('inpatient_admission_id')
-                ->exists();
+                ->lockForUpdate()
+                ->first();
 
-            if ($assessmentExists) {
+            if ($existingAssessment !== null
+                && (int) $existingAssessment->recorded_by_user_id === (int) $record->doctor_user_id) {
                 throw ValidationException::withMessages([
-                    'appointment' => 'Pemeriksaan awal perawat untuk kunjungan ini sudah tersimpan.',
+                    'appointment' => 'Tanda vital tidak dapat diubah setelah diperiksa oleh dokter.',
                 ]);
             }
 
-            DB::table('patient_care_updates')->insert([
-                'appointment_id' => $record->id,
+            $assessment = [
                 'patient_id' => $record->patient_id,
-                'inpatient_admission_id' => null,
                 'recorded_by_user_id' => $request->user()->id,
-                'update_status' => $validated['update_status'],
+                'update_status' => 'Menunggu Validasi Dokter',
                 'temperature_celsius' => $validated['temperature_celsius'] ?? null,
                 'blood_pressure' => $validated['blood_pressure'] ?? null,
                 'pulse_rate' => $validated['pulse_rate'] ?? null,
@@ -162,12 +157,24 @@ class NursingController extends Controller
                 'oxygen_saturation' => $validated['oxygen_saturation'] ?? null,
                 'notes' => $validated['notes'],
                 'created_at' => now(),
-            ]);
+            ];
+
+            if ($existingAssessment === null) {
+                DB::table('patient_care_updates')->insert([
+                    ...$assessment,
+                    'appointment_id' => $record->id,
+                    'inpatient_admission_id' => null,
+                ]);
+            } else {
+                DB::table('patient_care_updates')
+                    ->where('id', $existingAssessment->id)
+                    ->update($assessment);
+            }
         });
 
         return redirect()
             ->route('staff.nursing.assessment-queue.show', $appointment)
-            ->with('success', 'Pemeriksaan awal pasien tersimpan dan rekam medis tersedia untuk dokter.');
+            ->with('success', 'Tanda vital dan catatan awal berhasil dicatat untuk diperiksa dokter.');
     }
 
     public function index(Request $request): View
@@ -308,7 +315,7 @@ class NursingController extends Controller
             'admission' => $patientAdmission,
             'treatments' => $treatments,
             'updates' => $this->careUpdates($admission)->get(),
-            'updateStatuses' => self::UPDATE_STATUSES,
+            'updateStatuses' => PatientConditionStatus::values(),
         ]);
     }
 
@@ -324,7 +331,7 @@ class NursingController extends Controller
     public function storeUpdate(Request $request, int $admission): RedirectResponse
     {
         $validated = $request->validate([
-            'update_status' => ['required', Rule::in(self::UPDATE_STATUSES)],
+            'update_status' => ['required', Rule::in(PatientConditionStatus::values())],
             'notes' => ['required', 'string', 'max:3000'],
             'temperature_celsius' => ['nullable', 'numeric', 'between:30,45'],
             'blood_pressure' => ['nullable', 'regex:/\A\d{2,3}\/\d{2,3}\z/'],
@@ -570,8 +577,12 @@ class NursingController extends Controller
             ->join('doctor_schedules as schedules', 'schedules.id', '=', 'appointments.doctor_schedule_id')
             ->join('doctors', 'doctors.id', '=', 'schedules.doctor_id')
             ->join('departments', 'departments.id', '=', 'doctors.department_id')
+            ->leftJoin('patient_care_updates as nursing_assessments', function ($join): void {
+                $join->on('nursing_assessments.appointment_id', '=', 'appointments.id')
+                    ->whereNull('nursing_assessments.inpatient_admission_id');
+            })
             ->where('appointments.consultation_type', 'In-Person')
-            ->where('appointments.status', 'Checked-In')
+            ->whereIn('appointments.status', ['Checked-In', 'Completed'])
             ->when($date !== null, fn ($query) => $query->whereDate('appointments.appointment_date', $date))
             ->when($search !== '', function ($query) use ($search): void {
                 $query->where(function ($query) use ($search): void {
@@ -585,6 +596,7 @@ class NursingController extends Controller
                 'appointments.booking_code',
                 'appointments.appointment_date',
                 'appointments.queue_number',
+                'appointments.status',
                 'appointments.initial_complaint',
                 'patients.id as patient_id',
                 'patients.full_name as patient_name',
@@ -592,20 +604,12 @@ class NursingController extends Controller
                 'patients.gender',
                 'patients.birth_date',
                 'doctors.full_name as doctor_name',
+                'doctors.user_id as doctor_user_id',
+                'nursing_assessments.recorded_by_user_id as patient_condition_recorded_by_user_id',
                 'departments.name as department_name',
                 'schedules.start_time',
+                'doctors.user_id as doctor_user_id',
             ]);
-    }
-
-    private function waitingAssessments(?string $date = null, string $search = ''): Builder
-    {
-        return $this->inPersonAppointments($date, $search)
-            ->whereNotExists(function (Builder $query): void {
-                $query->selectRaw('1')
-                    ->from('patient_care_updates as nursing_assessments')
-                    ->whereColumn('nursing_assessments.appointment_id', 'appointments.id')
-                    ->whereNull('nursing_assessments.inpatient_admission_id');
-            });
     }
 
     private function careUpdates(int $admission): Builder

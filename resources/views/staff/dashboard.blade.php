@@ -45,6 +45,10 @@
                         <span class="staff-navigation-icon">◷</span>
                         Jadwal & pasien
                     </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.doctor.inpatients.index') }}">
+                        <span class="staff-navigation-icon">＋</span>
+                        Monitoring rawat inap
+                    </a>
                     <a class="staff-navigation-link" href="{{ route('staff.doctor.referrals.index') }}">
                         <span class="staff-navigation-icon">↗</span>
                         Pasien rujukan
@@ -60,7 +64,7 @@
                     </a>
                     <a class="staff-navigation-link" href="{{ route('staff.nursing.assessment-queue.index') }}">
                         <span class="staff-navigation-icon">◷</span>
-                        Antrean pemeriksaan awal
+                        Kondisi pasien
                     </a>
                     <a class="staff-navigation-link" href="{{ route('staff.nursing.reports.index') }}">
                         <span class="staff-navigation-icon">▤</span>
@@ -92,6 +96,10 @@
                     <a class="staff-navigation-link" href="{{ route('staff.management.nurses.index') }}">
                         <span class="staff-navigation-icon">＋</span>
                         Manajemen perawat
+                    </a>
+                    <a class="staff-navigation-link" href="{{ route('staff.management.laboratory.index') }}">
+                        <span class="staff-navigation-icon">▤</span>
+                        Manajemen laboratorium
                     </a>
                 @endif
                 @if (in_array($roleLabel, ['Resepsionis', 'Admin', \App\Support\HospitalStaffRole::Doctor->value], true))
@@ -149,6 +157,7 @@
                         <div class="staff-heading-actions">
                             <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.appointments.index') }}">Buka jadwal pasien</a>
                             <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.referrals.index') }}">Pasien rujukan</a>
+                            <a class="staff-secondary-button staff-button-link" href="{{ route('staff.doctor.laboratory-results.index') }}">Hasil laboratorium</a>
                             <a class="staff-action-button staff-button-link" href="{{ route('staff.doctor.teleconsultations.index') }}">Telekonsultasi</a>
                         </div>
                     @elseif ($roleLabel === \App\Support\HospitalStaffRole::Nurse->value)
@@ -278,9 +287,11 @@
                                                         'Pending' => ['Menunggu', 'is-pending'],
                                                         'Confirmed' => ['Dikonfirmasi', 'is-confirmed'],
                                                         'Checked-In' => $roleLabel === \App\Support\HospitalStaffRole::Doctor->value
-                                                            ? ($appointment->nursing_assessment_id !== null
-                                                                ? ['Siap diperiksa', 'is-arrived']
-                                                                : ['Menunggu perawat', 'is-confirmed'])
+                                                            ? ($appointment->nursing_assessment_id === null
+                                                                ? ['Menunggu tanda vital perawat', 'is-pending']
+                                                                : ($appointment->patient_condition_recorded_by_user_id === $appointment->doctor_user_id
+                                                                    ? ['Siap diperiksa', 'is-arrived']
+                                                                    : ['Menunggu validasi dokter', 'is-confirmed']))
                                                             : ['Check-in', 'is-arrived'],
                                                         'Completed' => ['Selesai', 'is-completed'],
                                                         'Cancelled' => ['Dibatalkan', 'is-cancelled'],
