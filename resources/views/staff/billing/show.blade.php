@@ -25,7 +25,7 @@
                     <div><p class="staff-eyebrow">TAGIHAN {{ $bill->bill_number }}</p><h1>Detail tagihan</h1><p>{{ $bill->patient_name }} · {{ $bill->medical_record_number ?: 'No. RM belum tersedia' }}</p></div>
                     <div class="staff-heading-actions">
                         <a class="staff-secondary-button staff-button-link" href="{{ route('staff.billing.index') }}">Kembali ke daftar</a>
-                        @if (! in_array($bill->status, ['Paid', 'Cancelled'], true))
+                        @if (in_array($roleLabel, ['Keuangan', 'Admin'], true) && $bill->source_consultation_id === null && ! in_array($bill->status, ['Paid', 'Cancelled'], true))
                             <a class="staff-action-button staff-button-link" href="{{ route('staff.billing.edit', $bill->id) }}">Edit tagihan</a>
                         @endif
                     </div>
@@ -40,6 +40,9 @@
 
                 <section class="staff-panel staff-billing-panel">
                     <div class="staff-panel-heading"><div><h2>Rincian tagihan</h2><p>Dibuat {{ \Illuminate\Support\Carbon::parse($bill->created_at)->locale('id')->translatedFormat('d F Y, H:i') }}</p></div><span class="staff-status {{ $statusClass }}">{{ $statusLabel }}</span></div>
+                    @if ($bill->source_consultation_id !== null)
+                        <p class="staff-alert staff-alert-info" role="status">Tagihan ini dibuat otomatis dari pemeriksaan dokter. Item dan tarifnya merupakan snapshot katalog saat konsultasi disimpan.</p>
+                    @endif
                     <div class="staff-table-wrap">
                         <table class="staff-table">
                             <thead><tr><th>Item</th><th>Jumlah</th><th>Harga satuan</th><th>Subtotal</th><th>Bukti tindakan</th></tr></thead>
@@ -88,13 +91,15 @@
                                             <td>{{ $submission->status }}{{ $submission->review_note ? ': '.$submission->review_note : '' }}</td>
                                             <td><a href="{{ route('staff.billing.payment-submissions.proof', [$bill->id, $submission->id]) }}">Unduh bukti</a></td>
                                             <td>
-                                                @if ($submission->status === 'Pending')
+                                                @if ($submission->status === 'Pending' && in_array($roleLabel, ['Keuangan', 'Admin'], true))
                                                     <form action="{{ route('staff.billing.payment-submissions.review', [$bill->id, $submission->id]) }}" method="post">
                                                         @csrf
                                                         <input type="text" name="review_note" maxlength="1000" placeholder="Catatan petugas">
                                                         <button class="staff-action-button" type="submit" name="decision" value="Approved">Setujui</button>
                                                         <button class="staff-secondary-button" type="submit" name="decision" value="Rejected">Tolak</button>
                                                     </form>
+                                                @elseif ($submission->status === 'Pending')
+                                                    Menunggu verifikasi keuangan
                                                 @else
                                                     Ditinjau {{ $submission->reviewed_at ? \Illuminate\Support\Carbon::parse($submission->reviewed_at)->locale('id')->translatedFormat('d F Y, H:i') : '' }}
                                                 @endif
@@ -124,7 +129,7 @@
                 @endif
 
                 <section class="staff-form-panel staff-billing-actions-panel">
-                    @if (in_array($bill->status, ['Unpaid', 'Partially Paid'], true))
+                    @if (in_array($roleLabel, ['Keuangan', 'Admin'], true) && in_array($bill->status, ['Unpaid', 'Partially Paid'], true))
                         <form class="staff-data-form" action="{{ route('staff.billing.payments.store', $bill->id) }}" method="post">
                             @csrf
                             <div class="staff-panel-heading"><div><h2>Catat pembayaran</h2><p>Sisa tagihan saat ini Rp {{ number_format($bill->balance_due, 0, ',', '.') }}.</p></div></div>
@@ -152,13 +157,13 @@
                     @endif
 
                     <div class="staff-billing-actions">
-                        @if ($bill->status === 'Unpaid')
+                        @if (in_array($roleLabel, ['Keuangan', 'Admin'], true) && $bill->source_consultation_id === null && $bill->status === 'Unpaid')
                             <form action="{{ route('staff.billing.cancel', $bill->id) }}" method="post" onsubmit="return confirm('Batalkan tagihan ini?')">
                                 @csrf
                                 <button class="staff-secondary-button" type="submit">Batalkan tagihan</button>
                             </form>
                         @endif
-                        @if ((int) $bill->amount_paid === 0)
+                        @if (in_array($roleLabel, ['Keuangan', 'Admin'], true) && $bill->source_consultation_id === null && (int) $bill->amount_paid === 0)
                             <form action="{{ route('staff.billing.destroy', $bill->id) }}" method="post" onsubmit="return confirm('Hapus tagihan ini secara permanen?')">
                                 @csrf
                                 @method('DELETE')

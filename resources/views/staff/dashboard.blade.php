@@ -156,7 +156,7 @@
                             <a class="staff-action-button staff-button-link" href="{{ route('staff.nursing.assessment-queue.index') }}">Buka antrean pasien</a>
                             <a class="staff-secondary-button staff-button-link" href="{{ route('staff.nursing.inpatients.index') }}">Pasien rawat inap</a>
                         </div>
-                    @elseif (in_array($roleLabel, ['Resepsionis', 'Keuangan', 'Admin'], true))
+                    @elseif (in_array($roleLabel, ['Keuangan', 'Admin'], true))
                         <div class="staff-heading-actions">
                             <a class="staff-action-button staff-button-link" href="{{ route('staff.billing.create') }}">+ Buat tagihan</a>
                         </div>

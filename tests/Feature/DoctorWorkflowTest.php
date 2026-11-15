@@ -94,6 +94,77 @@ class DoctorWorkflowTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('procedure_catalog', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('category');
+            $table->string('name');
+            $table->unsignedBigInteger('price');
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        Schema::create('medicine_catalog', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('code')->unique();
+            $table->string('generic_name');
+            $table->string('strength')->nullable();
+            $table->string('dosage_form')->nullable();
+            $table->string('unit');
+            $table->unsignedBigInteger('price');
+            $table->boolean('price_is_estimate')->default(false);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        Schema::create('bills', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('bill_number')->unique();
+            $table->unsignedInteger('patient_id');
+            $table->unsignedBigInteger('total_amount');
+            $table->unsignedBigInteger('amount_paid')->default(0);
+            $table->string('status');
+            $table->unsignedInteger('created_by_user_id');
+            $table->unsignedInteger('source_consultation_id')->nullable()->unique();
+            $table->timestamps();
+        });
+
+        Schema::create('bill_items', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('bill_id');
+            $table->string('item_name');
+            $table->unsignedInteger('quantity');
+            $table->unsignedBigInteger('unit_price');
+            $table->unsignedInteger('procedure_catalog_id')->nullable();
+            $table->unsignedInteger('medicine_catalog_id')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('prescriptions', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('consultation_id')->unique();
+            $table->unsignedInteger('patient_id');
+            $table->unsignedInteger('doctor_id');
+            $table->unsignedInteger('bill_id');
+            $table->unsignedInteger('dispensed_by_user_id')->nullable();
+            $table->timestamp('dispensed_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('prescription_items', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('prescription_id');
+            $table->unsignedInteger('medicine_id');
+            $table->string('medicine_name');
+            $table->string('strength')->nullable();
+            $table->string('dosage_form')->nullable();
+            $table->string('unit');
+            $table->unsignedInteger('quantity');
+            $table->string('dosage');
+            $table->text('instructions');
+            $table->unsignedBigInteger('unit_price');
+            $table->timestamps();
+        });
+
         Schema::create('inpatient_admissions', function (Blueprint $table): void {
             $table->increments('id');
             $table->unsignedInteger('patient_id');
@@ -460,6 +531,87 @@ class DoctorWorkflowTest extends TestCase
 
         $this->assertDatabaseCount('doctor_consultations', 0);
         $this->assertDatabaseCount('inpatient_admissions', 0);
+    }
+
+    public function test_doctor_sends_database_priced_procedures_and_prescription_to_finance(): void
+    {
+        [$doctor, $scheduleId] = $this->createDoctor('Dr. Utama');
+        $appointmentId = $this->createAppointment($scheduleId, 'Checked-In', 'Pasien Dengan Resep');
+        $this->createNursingAssessment($appointmentId);
+        $procedureId = DB::table('procedure_catalog')->insertGetId([
+            'category' => 'Tindakan Medis',
+            'name' => 'Perawatan luka',
+            'price' => 125000,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $medicineId = DB::table('medicine_catalog')->insertGetId([
+            'code' => 'MED-001',
+            'generic_name' => 'Parasetamol',
+            'strength' => '500 mg',
+            'dosage_form' => 'Tablet',
+            'unit' => 'tablet',
+            'price' => 2500,
+            'price_is_estimate' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($doctor->user)
+            ->post(route('staff.doctor.appointments.consultation.store', $appointmentId), [
+                'diagnosis' => 'Luka ringan',
+                'treatment_plan' => 'Perawatan luka dan obat sesuai resep.',
+                'disposition' => 'Rawat Jalan',
+                'referral_slot' => 'none',
+                'procedure_ids' => [$procedureId],
+                'prescription_items' => [[
+                    'medicine_id' => $medicineId,
+                    'quantity' => 4,
+                    'dosage' => '1 tablet',
+                    'instructions' => '3 kali sehari sesudah makan',
+                    'unit_price' => 1,
+                ]],
+            ])
+            ->assertRedirect(route('staff.doctor.appointments.show', $appointmentId))
+            ->assertSessionHas('success', 'Catatan konsultasi tersimpan; rincian tagihan telah dikirim ke bagian keuangan.');
+
+        $consultationId = DB::table('doctor_consultations')
+            ->where('appointment_id', $appointmentId)
+            ->value('id');
+        $bill = DB::table('bills')->where('source_consultation_id', $consultationId)->first();
+
+        self::assertSame(135000, (int) $bill->total_amount);
+        self::assertSame('Unpaid', $bill->status);
+        $this->assertDatabaseHas('bill_items', [
+            'bill_id' => $bill->id,
+            'item_name' => 'Perawatan luka',
+            'quantity' => 1,
+            'unit_price' => 125000,
+            'procedure_catalog_id' => $procedureId,
+        ]);
+        $this->assertDatabaseHas('bill_items', [
+            'bill_id' => $bill->id,
+            'item_name' => 'Parasetamol 500 mg Tablet (harga estimasi)',
+            'quantity' => 4,
+            'unit_price' => 2500,
+            'medicine_catalog_id' => $medicineId,
+        ]);
+        $this->assertDatabaseHas('prescription_items', [
+            'medicine_id' => $medicineId,
+            'medicine_name' => 'Parasetamol',
+            'quantity' => 4,
+            'dosage' => '1 tablet',
+            'instructions' => '3 kali sehari sesudah makan',
+            'unit_price' => 2500,
+        ]);
+
+        $this->get(route('staff.doctor.appointments.show', $appointmentId))
+            ->assertOk()
+            ->assertSeeText('Resep untuk farmasi')
+            ->assertSeeText('Menunggu pembayaran')
+            ->assertSeeText('Parasetamol');
     }
 
     public function test_doctor_cannot_access_another_doctors_appointment(): void

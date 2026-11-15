@@ -94,11 +94,12 @@ class BillingController extends Controller
         return view('staff.billing.form', [
             'bill' => null,
             'patients' => $patients,
+            'procedureCatalog' => $this->activeProcedureCatalog(),
             'nursingTreatments' => $patientId === null ? collect() : $this->availableNursingTreatments($patientId),
             'roleLabel' => $this->staffRoleLabel($request),
             'search' => $search,
             'selectedPatientId' => $patientId,
-            'formItems' => [['item_name' => '', 'quantity' => 1, 'unit_price' => '', 'nursing_treatment_id' => '']],
+            'formItems' => [['procedure_catalog_id' => '', 'quantity' => 1, 'nursing_treatment_id' => '']],
         ]);
     }
 
@@ -268,14 +269,14 @@ class BillingController extends Controller
         return view('staff.billing.form', [
             'bill' => $billRecord,
             'patients' => $patients,
+            'procedureCatalog' => $this->activeProcedureCatalog(),
             'nursingTreatments' => $this->availableNursingTreatments((int) $billRecord->patient_id),
             'roleLabel' => $this->staffRoleLabel($request),
             'search' => '',
             'selectedPatientId' => (int) $billRecord->patient_id,
             'formItems' => $billRecord->items->map(fn (object $item): array => [
-                'item_name' => $item->item_name,
+                'procedure_catalog_id' => $item->procedure_catalog_id,
                 'quantity' => $item->quantity,
-                'unit_price' => $item->unit_price,
                 'nursing_treatment_id' => $nursingTreatmentsByItem[$item->id] ?? '',
             ])->all(),
         ]);
@@ -350,6 +351,12 @@ class BillingController extends Controller
                 ->first();
 
             abort_if($billRecord === null, 404);
+
+            if ($billRecord->source_consultation_id !== null) {
+                throw ValidationException::withMessages([
+                    'bill' => 'Tagihan yang dibuat dari pemeriksaan dokter tidak dapat dihapus.',
+                ]);
+            }
 
             if ((int) $billRecord->amount_paid > 0 || DB::table('bill_payments')->where('bill_id', $bill)->exists()) {
                 throw ValidationException::withMessages([
@@ -434,6 +441,12 @@ class BillingController extends Controller
 
             abort_if($billRecord === null, 404);
 
+            if ($billRecord->source_consultation_id !== null) {
+                throw ValidationException::withMessages([
+                    'bill' => 'Tagihan dari pemeriksaan dokter tidak dapat dibatalkan.',
+                ]);
+            }
+
             if ($billRecord->status !== 'Unpaid' || (int) $billRecord->amount_paid > 0) {
                 throw ValidationException::withMessages([
                     'bill' => 'Hanya tagihan yang belum dibayar yang dapat dibatalkan.',
@@ -461,31 +474,52 @@ class BillingController extends Controller
         return [
             'patient_id' => ['required', 'integer', 'exists:patient_profiles,id'],
             'items' => ['required', 'array', 'min:1', 'max:50'],
-            'items.*.item_name' => ['required', 'string', 'not_regex:/^\s*$/u', 'max:150'],
+            'items.*.procedure_catalog_id' => ['required', 'integer', 'distinct', 'exists:procedure_catalog,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:10000'],
-            'items.*.unit_price' => ['required', 'integer', 'min:1', 'max:999999999999'],
             'items.*.nursing_treatment_id' => ['nullable', 'integer', 'distinct', 'exists:inpatient_nursing_treatments,id'],
         ];
     }
 
     /**
-     * @param  array<int, array{item_name: string, quantity: int|string, unit_price: int|string, nursing_treatment_id?: int|string|null}>  $items
-     * @return list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>
+     * @param  array<int, array{procedure_catalog_id: int|string, quantity: int|string, nursing_treatment_id?: int|string|null}>  $items
+     * @return list<array{item_name: string, quantity: int, unit_price: int, procedure_catalog_id: int, nursing_treatment_id: ?int}>
      */
     private function normalizeItems(array $items): array
     {
-        return array_map(static fn (array $item): array => [
-            'item_name' => trim($item['item_name']),
-            'quantity' => (int) $item['quantity'],
-            'unit_price' => (int) $item['unit_price'],
-            'nursing_treatment_id' => isset($item['nursing_treatment_id']) && $item['nursing_treatment_id'] !== ''
-                ? (int) $item['nursing_treatment_id']
-                : null,
-        ], $items);
+        $procedureIds = array_map(
+            static fn (array $item): int => (int) $item['procedure_catalog_id'],
+            $items,
+        );
+        $procedures = DB::table('procedure_catalog')
+            ->whereIn('id', $procedureIds)
+            ->where('is_active', true)
+            ->get(['id', 'name', 'price'])
+            ->keyBy('id');
+
+        if ($procedures->count() !== count($procedureIds)) {
+            throw ValidationException::withMessages([
+                'items' => 'Tarif tindakan tidak tersedia atau sudah tidak aktif.',
+            ]);
+        }
+
+        return array_map(static function (array $item) use ($procedures): array {
+            $procedureId = (int) $item['procedure_catalog_id'];
+            $procedure = $procedures->get($procedureId);
+
+            return [
+                'item_name' => $procedure->name,
+                'quantity' => (int) $item['quantity'],
+                'unit_price' => (int) $procedure->price,
+                'procedure_catalog_id' => $procedureId,
+                'nursing_treatment_id' => isset($item['nursing_treatment_id']) && $item['nursing_treatment_id'] !== ''
+                    ? (int) $item['nursing_treatment_id']
+                    : null,
+            ];
+        }, $items);
     }
 
     /**
-     * @param  list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>  $items
+     * @param  list<array{item_name: string, quantity: int, unit_price: int, procedure_catalog_id: int, nursing_treatment_id: ?int}>  $items
      * @return array<int, string>
      */
     private function selectedNursingTreatmentNames(array $items, int $patientId, ?int $billId = null): array
@@ -524,15 +558,19 @@ class BillingController extends Controller
     }
 
     /**
-     * @param  list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>  $items
+     * @param  list<array{item_name: string, quantity: int, unit_price: int, procedure_catalog_id: int, nursing_treatment_id: ?int}>  $items
      * @param  array<int, string>  $treatmentNames
-     * @return list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>
+     * @return list<array{item_name: string, quantity: int, unit_price: int, procedure_catalog_id: int, nursing_treatment_id: ?int}>
      */
     private function applyNursingTreatmentNames(array $items, array $treatmentNames): array
     {
         foreach ($items as &$item) {
             if ($item['nursing_treatment_id'] !== null) {
-                $item['item_name'] = $treatmentNames[$item['nursing_treatment_id']];
+                $item['item_name'] = Str::limit(
+                    $item['item_name'].' — '.$treatmentNames[$item['nursing_treatment_id']],
+                    150,
+                    '',
+                );
             }
         }
         unset($item);
@@ -552,7 +590,7 @@ class BillingController extends Controller
     }
 
     /**
-     * @param  list<array{item_name: string, quantity: int, unit_price: int, nursing_treatment_id: ?int}>  $items
+     * @param  list<array{item_name: string, quantity: int, unit_price: int, procedure_catalog_id: int, nursing_treatment_id: ?int}>  $items
      */
     private function replaceItems(int $billId, array $items, Carbon $now): void
     {
@@ -562,6 +600,7 @@ class BillingController extends Controller
                 'item_name' => $item['item_name'],
                 'quantity' => $item['quantity'],
                 'unit_price' => $item['unit_price'],
+                'procedure_catalog_id' => $item['procedure_catalog_id'],
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
@@ -595,6 +634,15 @@ class BillingController extends Controller
             ->get();
     }
 
+    private function activeProcedureCatalog(): Collection
+    {
+        return DB::table('procedure_catalog')
+            ->where('is_active', true)
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get(['id', 'category', 'name', 'price']);
+    }
+
     private function loadBill(int $billId): object
     {
         $bill = DB::table('bills')
@@ -607,6 +655,7 @@ class BillingController extends Controller
                 'bills.total_amount',
                 'bills.amount_paid',
                 'bills.status',
+                'bills.source_consultation_id',
                 'bills.created_at',
                 'patients.full_name as patient_name',
                 'patients.medical_record_number',
@@ -648,9 +697,9 @@ class BillingController extends Controller
 
     private function ensureEditable(object $bill): void
     {
-        if (in_array($bill->status, ['Paid', 'Cancelled'], true)) {
+        if ($bill->source_consultation_id !== null || in_array($bill->status, ['Paid', 'Cancelled'], true)) {
             throw ValidationException::withMessages([
-                'bill' => 'Tagihan lunas atau dibatalkan tidak dapat diedit.',
+                'bill' => 'Tagihan dari konsultasi dokter, lunas, atau dibatalkan tidak dapat diedit.',
             ]);
         }
     }

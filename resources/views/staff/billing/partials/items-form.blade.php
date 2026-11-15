@@ -6,25 +6,36 @@
     <div class="staff-panel-heading">
         <div>
             <h2>Rincian tagihan</h2>
-            <p>Masukkan item dan harga dalam rupiah. Total dihitung otomatis oleh sistem.</p>
+            <p>Pilih tindakan dari katalog tarif. Harga ditetapkan sistem dari database.</p>
         </div>
-        <button class="staff-secondary-button" type="button" data-add-bill-item>+ Tambah item</button>
+        @if ($procedureCatalog->isNotEmpty())
+            <button class="staff-secondary-button" type="button" data-add-bill-item>+ Tambah tindakan</button>
+        @endif
     </div>
+    @if ($procedureCatalog->isEmpty())
+        <p class="staff-alert staff-alert-info" role="status">Katalog tarif tindakan belum tersedia. Jalankan seeder katalog sebelum membuat tagihan.</p>
+    @endif
     <div class="staff-billing-item-list" data-bill-items>
         @foreach ($formItems as $index => $item)
             <div class="staff-billing-item-row" data-item-index="{{ $index }}">
                 <div class="staff-form-field">
-                    <label for="item_name_{{ $index }}">Nama item <span>*</span></label>
-                    <input id="item_name_{{ $index }}" name="items[{{ $index }}][item_name]" type="text" maxlength="150" value="{{ $item['item_name'] ?? '' }}" @readonly(! empty($item['nursing_treatment_id'])) required>
+                    <label for="procedure_catalog_id_{{ $index }}">Tindakan <span>*</span></label>
+                    <select id="procedure_catalog_id_{{ $index }}" name="items[{{ $index }}][procedure_catalog_id]" required>
+                        <option value="">Pilih tindakan dari katalog</option>
+                        @foreach ($procedureCatalog as $procedure)
+                            <option value="{{ $procedure->id }}" @selected((string) ($item['procedure_catalog_id'] ?? '') === (string) $procedure->id)>
+                                {{ $procedure->name }}
+                            </option>
+                        @endforeach
+                    </select>
                     <input type="hidden" name="items[{{ $index }}][nursing_treatment_id]" data-nursing-treatment-id value="{{ $item['nursing_treatment_id'] ?? '' }}">
+                    @if (! empty($item['nursing_treatment_id']))
+                        <small>Tindakan perawat terhubung ke item ini.</small>
+                    @endif
                 </div>
                 <div class="staff-form-field">
                     <label for="quantity_{{ $index }}">Jumlah <span>*</span></label>
                     <input id="quantity_{{ $index }}" name="items[{{ $index }}][quantity]" type="number" min="1" max="10000" value="{{ $item['quantity'] ?? 1 }}" required>
-                </div>
-                <div class="staff-form-field">
-                    <label for="unit_price_{{ $index }}">Harga satuan (Rp) <span>*</span></label>
-                    <input id="unit_price_{{ $index }}" name="items[{{ $index }}][unit_price]" type="number" min="1" max="999999999999" value="{{ $item['unit_price'] ?? '' }}" required>
                 </div>
                 <button class="staff-small-action is-danger" type="button" data-remove-bill-item aria-label="Hapus item">Hapus</button>
             </div>
@@ -35,17 +46,21 @@
 <template data-bill-item-template>
     <div class="staff-billing-item-row" data-item-index="__INDEX__">
         <div class="staff-form-field">
-            <label for="item_name___INDEX__">Nama item <span>*</span></label>
-            <input id="item_name___INDEX__" name="items[__INDEX__][item_name]" type="text" maxlength="150" required>
+            <label for="procedure_catalog_id___INDEX__">Tindakan <span>*</span></label>
+            <select id="procedure_catalog_id___INDEX__" name="items[__INDEX__][procedure_catalog_id]" required>
+                <option value="">Pilih tindakan dari katalog</option>
+                @foreach ($procedureCatalog as $procedure)
+                    <option value="{{ $procedure->id }}">
+                        {{ $procedure->name }}
+                    </option>
+                @endforeach
+            </select>
             <input type="hidden" name="items[__INDEX__][nursing_treatment_id]" data-nursing-treatment-id>
+            <small data-nursing-treatment-label></small>
         </div>
         <div class="staff-form-field">
             <label for="quantity___INDEX__">Jumlah <span>*</span></label>
             <input id="quantity___INDEX__" name="items[__INDEX__][quantity]" type="number" min="1" max="10000" value="1" required>
-        </div>
-        <div class="staff-form-field">
-            <label for="unit_price___INDEX__">Harga satuan (Rp) <span>*</span></label>
-            <input id="unit_price___INDEX__" name="items[__INDEX__][unit_price]" type="number" min="1" max="999999999999" required>
         </div>
         <button class="staff-small-action is-danger" type="button" data-remove-bill-item aria-label="Hapus item">Hapus</button>
     </div>

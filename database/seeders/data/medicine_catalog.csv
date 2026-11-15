@@ -1,0 +1,26 @@
+code,generic_name,strength,dosage_form,unit,price
+DEMO-PAR500-TAB,Paracetamol,500 mg,Tablet,tablet,100
+DEMO-PAR120-SYR,Paracetamol,120 mg/5 mL, Sirup 60 mL,botol,8000
+DEMO-IBU200-TAB,Ibuprofen,200 mg,Tablet,tablet,100
+DEMO-IBU400-TAB,Ibuprofen,400 mg,Tablet,tablet,200
+DEMO-AMO500-CAP,Amoxicillin,500 mg,Kapsul,kapsul,300
+DEMO-AMO250-SYR,Amoxicillin,250 mg/5 mL,Sirup kering 60 mL,botol,9000
+DEMO-CET10-TAB,Cetirizine,10 mg,Tablet,tablet,200
+DEMO-LOR10-TAB,Loratadine,10 mg,Tablet,tablet,200
+DEMO-CTM4-TAB,Chlorpheniramine maleate,4 mg,Tablet,tablet,100
+DEMO-OME20-CAP,Omeprazole,20 mg,Kapsul,kapsul,500
+DEMO-ANT-SUS,Aluminium hydroxide + magnesium hydroxide,200 mg + 200 mg/5 mL,Suspensi 60 mL,botol,7500
+DEMO-ORS-SACH,Oral rehydration salts,Formula oralit,Sachet,sachet,1500
+DEMO-ZINC20-TAB,Zinc sulfate,20 mg,Tablet,tablet,300
+DEMO-MET500-TAB,Metformin,500 mg,Tablet,tablet,150
+DEMO-AMLO5-TAB,Amlodipine,5 mg,Tablet,tablet,200
+DEMO-CAP25-TAB,Captopril,25 mg,Tablet,tablet,150
+DEMO-SIM20-TAB,Simvastatin,20 mg,Tablet,tablet,300
+DEMO-SAL2-TAB,Salbutamol,2 mg,Tablet,tablet,150
+DEMO-AMB30-TAB,Ambroxol,30 mg,Tablet,tablet,200
+DEMO-DEX05-TAB,Dexamethasone,0.5 mg,Tablet,tablet,100
+DEMO-VITC50-TAB,Ascorbic acid,50 mg,Tablet,tablet,100
+DEMO-FE-TAB,Ferrous sulfate,Equivalent elemental iron 60 mg,Tablet,tablet,300
+DEMO-HCTZ25-TAB,Hydrochlorothiazide,25 mg,Tablet,tablet,100
+DEMO-BISO25-TAB,Bisoprolol,2.5 mg,Tablet,tablet,500
+DEMO-ASA80-TAB,Acetylsalicylic acid,80 mg,Tablet,tablet,150

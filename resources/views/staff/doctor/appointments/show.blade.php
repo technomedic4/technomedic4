@@ -101,11 +101,35 @@
                         @endif
                         <div class="staff-record-field"><span>Catatan tambahan</span><p>{{ $consultation->notes ?: 'Tidak ada catatan tambahan.' }}</p></div>
                     </section>
+                    @if ($prescription)
+                        <section class="staff-panel staff-encounter-summary">
+                            <div class="staff-panel-heading">
+                                <div><h2>Resep untuk farmasi</h2><p>No. tagihan {{ $prescription->bill_number }}</p></div>
+                                @if ($prescription->dispensed_at)
+                                    <span class="staff-status is-completed">Sudah diserahkan</span>
+                                @elseif ($prescription->bill_status === 'Paid')
+                                    <span class="staff-status is-paid">Siap diserahkan</span>
+                                @else
+                                    <span class="staff-status is-unpaid">Menunggu pembayaran</span>
+                                @endif
+                            </div>
+                            @foreach ($prescriptionItems as $item)
+                                <div class="staff-record-field">
+                                    <span>{{ $item->medicine_name }}{{ $item->strength ? ' '.$item->strength : '' }}{{ $item->dosage_form ? ' · '.$item->dosage_form : '' }}</span>
+                                    <p>{{ $item->quantity }} {{ $item->unit }} · {{ $item->dosage }} · {{ $item->instructions }}</p>
+                                </div>
+                            @endforeach
+                        </section>
+                    @endif
                 @elseif ($appointment->status === 'Checked-In')
                     <section class="staff-form-panel">
                         <div class="staff-panel-heading"><div><h2>Hasil pemeriksaan</h2><p>Lengkapi diagnosis dan rencana terapi sebelum menyelesaikan kunjungan.</p></div></div>
                         <form class="staff-data-form" action="{{ route('staff.doctor.appointments.consultation.store', $appointment->id) }}" method="post">
                             @csrf
+                            @php
+                                $selectedProcedureIds = array_map('strval', old('procedure_ids', []));
+                                $prescriptionFormItems = old('prescription_items', []);
+                            @endphp
                             <div class="staff-form-grid">
                                 <div class="staff-form-field staff-field-wide">
                                     <label for="diagnosis">Diagnosis <span>*</span></label>
@@ -114,6 +138,56 @@
                                 <div class="staff-form-field staff-field-wide">
                                     <label for="treatment_plan">Rencana tindakan / terapi <span>*</span></label>
                                     <textarea id="treatment_plan" name="treatment_plan" rows="4" maxlength="5000" required>{{ old('treatment_plan') }}</textarea>
+                                </div>
+                                <div class="staff-form-field staff-field-wide">
+                                    <label for="procedure_ids">Tindakan bertarif</label>
+                                    <select id="procedure_ids" name="procedure_ids[]" multiple size="7">
+                                        @foreach ($procedureCatalog as $procedure)
+                                            <option value="{{ $procedure->id }}" @selected(in_array((string) $procedure->id, $selectedProcedureIds, true))>
+                                                {{ $procedure->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <small>Pilih tindakan yang dilakukan. Tarif berasal dari Perwali Yogyakarta No. 53 Tahun 2021 dan akan masuk ke rincian tagihan keuangan.</small>
+                                </div>
+                                <div class="staff-form-field staff-field-wide">
+                                    <label>Resep obat untuk pasien</label>
+                                    @if ($medicineCatalog->isEmpty())
+                                        <small>Katalog obat belum diisi. Resep belum dapat dibuat sampai daftar obat berizin dimuat ke database.</small>
+                                    @else
+                                        <p class="staff-alert staff-alert-info" role="status">Harga awal katalog obat adalah estimasi untuk data contoh. Bagian keuangan harus memverifikasi harga fasilitas sebelum digunakan untuk transaksi nyata.</p>
+                                        <div class="staff-billing-item-list" data-prescription-items>
+                                            @foreach ($prescriptionFormItems as $index => $item)
+                                                <div class="staff-billing-item-row" data-item-index="{{ $index }}">
+                                                    <div class="staff-form-field">
+                                                        <label for="medicine_id_{{ $index }}">Obat <span>*</span></label>
+                                                        <select id="medicine_id_{{ $index }}" name="prescription_items[{{ $index }}][medicine_id]" required>
+                                                            <option value="">Pilih obat</option>
+                                                            @foreach ($medicineCatalog as $medicine)
+                                                                <option value="{{ $medicine->id }}" @selected((string) ($item['medicine_id'] ?? '') === (string) $medicine->id)>
+                                                                    {{ $medicine->generic_name }}{{ $medicine->strength ? ' '.$medicine->strength : '' }}{{ $medicine->dosage_form ? ' · '.$medicine->dosage_form : '' }} ({{ $medicine->unit }}, Rp {{ number_format($medicine->price, 0, ',', '.') }}{{ $medicine->price_is_estimate ? ' · estimasi' : '' }})
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+                                                    <div class="staff-form-field">
+                                                        <label for="medicine_quantity_{{ $index }}">Jumlah <span>*</span></label>
+                                                        <input id="medicine_quantity_{{ $index }}" name="prescription_items[{{ $index }}][quantity]" type="number" min="1" max="1000" value="{{ $item['quantity'] ?? 1 }}" required>
+                                                    </div>
+                                                    <div class="staff-form-field">
+                                                        <label for="medicine_dosage_{{ $index }}">Dosis <span>*</span></label>
+                                                        <input id="medicine_dosage_{{ $index }}" name="prescription_items[{{ $index }}][dosage]" type="text" maxlength="150" value="{{ $item['dosage'] ?? '' }}" required>
+                                                    </div>
+                                                    <div class="staff-form-field">
+                                                        <label for="medicine_instructions_{{ $index }}">Aturan pakai <span>*</span></label>
+                                                        <input id="medicine_instructions_{{ $index }}" name="prescription_items[{{ $index }}][instructions]" type="text" maxlength="500" value="{{ $item['instructions'] ?? '' }}" required>
+                                                    </div>
+                                                    <button class="staff-small-action is-danger" type="button" data-remove-prescription-item aria-label="Hapus obat">Hapus</button>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                        <button class="staff-secondary-button" type="button" data-add-prescription-item>+ Tambah obat</button>
+                                    @endif
                                 </div>
                                 <div class="staff-form-field staff-field-wide">
                                     <label for="disposition">Keputusan tindak lanjut <span>*</span></label>
@@ -156,6 +230,61 @@
                                 <button class="staff-action-button" type="submit">Simpan pemeriksaan & keputusan</button>
                             </div>
                         </form>
+                        @if ($medicineCatalog->isNotEmpty())
+                            <template data-prescription-item-template>
+                                <div class="staff-billing-item-row" data-item-index="__INDEX__">
+                                    <div class="staff-form-field">
+                                        <label for="medicine_id___INDEX__">Obat <span>*</span></label>
+                                        <select id="medicine_id___INDEX__" name="prescription_items[__INDEX__][medicine_id]" required>
+                                            <option value="">Pilih obat</option>
+                                            @foreach ($medicineCatalog as $medicine)
+                                                <option value="{{ $medicine->id }}">
+                                                    {{ $medicine->generic_name }}{{ $medicine->strength ? ' '.$medicine->strength : '' }}{{ $medicine->dosage_form ? ' · '.$medicine->dosage_form : '' }} ({{ $medicine->unit }}, Rp {{ number_format($medicine->price, 0, ',', '.') }}{{ $medicine->price_is_estimate ? ' · estimasi' : '' }})
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="staff-form-field">
+                                        <label for="medicine_quantity___INDEX__">Jumlah <span>*</span></label>
+                                        <input id="medicine_quantity___INDEX__" name="prescription_items[__INDEX__][quantity]" type="number" min="1" max="1000" value="1" required>
+                                    </div>
+                                    <div class="staff-form-field">
+                                        <label for="medicine_dosage___INDEX__">Dosis <span>*</span></label>
+                                        <input id="medicine_dosage___INDEX__" name="prescription_items[__INDEX__][dosage]" type="text" maxlength="150" required>
+                                    </div>
+                                    <div class="staff-form-field">
+                                        <label for="medicine_instructions___INDEX__">Aturan pakai <span>*</span></label>
+                                        <input id="medicine_instructions___INDEX__" name="prescription_items[__INDEX__][instructions]" type="text" maxlength="500" required>
+                                    </div>
+                                    <button class="staff-small-action is-danger" type="button" data-remove-prescription-item aria-label="Hapus obat">Hapus</button>
+                                </div>
+                            </template>
+                            <script>
+                                (() => {
+                                    const list = document.querySelector('[data-prescription-items]');
+                                    const template = document.querySelector('[data-prescription-item-template]');
+                                    const addButton = document.querySelector('[data-add-prescription-item]');
+
+                                    if (!list || !template || !addButton) {
+                                        return;
+                                    }
+
+                                    let nextIndex = Array.from(list.children).reduce(
+                                        (next, row) => Math.max(next, Number(row.dataset.itemIndex) + 1),
+                                        0,
+                                    );
+
+                                    addButton.addEventListener('click', () => {
+                                        list.insertAdjacentHTML('beforeend', template.innerHTML.replace(/__INDEX__/g, String(nextIndex++)));
+                                    });
+                                    list.addEventListener('click', (event) => {
+                                        if (event.target.closest('[data-remove-prescription-item]')) {
+                                            event.target.closest('.staff-billing-item-row').remove();
+                                        }
+                                    });
+                                })();
+                            </script>
+                        @endif
                     </section>
                 @elseif (in_array($appointment->status, ['Pending', 'Confirmed'], true) && $referral)
                     <section class="staff-alert staff-alert-info" role="status">

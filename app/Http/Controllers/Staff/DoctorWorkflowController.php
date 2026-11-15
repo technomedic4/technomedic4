@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -180,6 +181,24 @@ class DoctorWorkflowController extends Controller
                 'referral_doctors.full_name as referral_doctor_name',
             ])
             ->first();
+        $prescription = $consultation === null
+            ? null
+            : DB::table('prescriptions')
+                ->join('bills', 'bills.id', '=', 'prescriptions.bill_id')
+                ->where('prescriptions.consultation_id', $consultation->id)
+                ->select([
+                    'prescriptions.id',
+                    'prescriptions.dispensed_at',
+                    'bills.bill_number',
+                    'bills.status as bill_status',
+                ])
+                ->first();
+        $prescriptionItems = $prescription === null
+            ? collect()
+            : DB::table('prescription_items')
+                ->where('prescription_id', $prescription->id)
+                ->orderBy('id')
+                ->get();
         $referral = $record->referral_consultation_id === null
             ? null
             : DB::table('doctor_consultations as referrals')
@@ -218,6 +237,18 @@ class DoctorWorkflowController extends Controller
             'appointment' => $record,
             'nursingAssessment' => $nursingAssessment,
             'consultation' => $consultation,
+            'prescription' => $prescription,
+            'prescriptionItems' => $prescriptionItems,
+            'procedureCatalog' => DB::table('procedure_catalog')
+                ->where('is_active', true)
+                ->orderBy('category')
+                ->orderBy('name')
+                ->get(['id', 'category', 'name', 'price']),
+            'medicineCatalog' => DB::table('medicine_catalog')
+                ->where('is_active', true)
+                ->orderBy('generic_name')
+                ->orderBy('strength')
+                ->get(['id', 'generic_name', 'strength', 'dosage_form', 'unit', 'price', 'price_is_estimate']),
             'referral' => $referral,
             'referralNursingAssessment' => $referralNursingAssessment,
             'referralSlots' => $referralSlots,
@@ -245,6 +276,13 @@ class DoctorWorkflowController extends Controller
             'diagnosis' => ['required', 'string', 'max:5000'],
             'treatment_plan' => ['required', 'string', 'max:5000'],
             'disposition' => ['required', Rule::in(['Rawat Jalan', 'Rawat Inap'])],
+            'procedure_ids' => ['sometimes', 'array', 'max:50'],
+            'procedure_ids.*' => ['required', 'integer', 'distinct', 'exists:procedure_catalog,id'],
+            'prescription_items' => ['sometimes', 'array', 'max:50'],
+            'prescription_items.*.medicine_id' => ['required', 'integer', 'distinct', 'exists:medicine_catalog,id'],
+            'prescription_items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
+            'prescription_items.*.dosage' => ['required', 'string', 'max:150'],
+            'prescription_items.*.instructions' => ['required', 'string', 'max:500'],
             'referral_slot' => ['required', Rule::in(['none', ...$referralSlotValues])],
             'referral_reason' => $referralRequested
                 ? ['required', 'string', 'max:5000']
@@ -255,7 +293,7 @@ class DoctorWorkflowController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        DB::transaction(function () use ($request, $appointment, $doctorId, $validated, $referralSlots, $appointmentRegistration): void {
+        $hasBill = DB::transaction(function () use ($request, $appointment, $doctorId, $validated, $referralSlots, $appointmentRegistration): bool {
             $record = $this->doctorAppointments($doctorId)
                 ->where('appointments.id', $appointment)
                 ->where('appointments.consultation_type', 'In-Person')
@@ -345,6 +383,15 @@ class DoctorWorkflowController extends Controller
                 'updated_at' => now(),
             ]);
 
+            $hasBill = $this->createConsultationBill(
+                (int) $consultationId,
+                (int) $record->patient_id,
+                $doctorId,
+                (int) $request->user()->id,
+                $validated['procedure_ids'] ?? [],
+                $validated['prescription_items'] ?? [],
+            );
+
             if ($referralSlot !== null) {
                 $referralAppointmentId = $appointmentRegistration->create(
                     (int) $record->patient_id,
@@ -362,11 +409,144 @@ class DoctorWorkflowController extends Controller
             DB::table('appointments')
                 ->where('id', $record->id)
                 ->update(['status' => 'Completed']);
+
+            return $hasBill;
         });
 
         return redirect()
             ->route('staff.doctor.appointments.show', $appointment)
-            ->with('success', 'Catatan konsultasi tersimpan dan kunjungan ditandai selesai.');
+            ->with(
+                'success',
+                $hasBill
+                    ? 'Catatan konsultasi tersimpan; rincian tagihan telah dikirim ke bagian keuangan.'
+                    : 'Catatan konsultasi tersimpan dan kunjungan ditandai selesai.',
+            );
+    }
+
+    /**
+     * @param  list<string|int>  $procedureIds
+     * @param  list<array{medicine_id: string|int, quantity: string|int, dosage: string, instructions: string}>  $prescriptionItems
+     */
+    private function createConsultationBill(
+        int $consultationId,
+        int $patientId,
+        int $doctorId,
+        int $userId,
+        array $procedureIds,
+        array $prescriptionItems,
+    ): bool {
+        if ($procedureIds === [] && $prescriptionItems === []) {
+            return false;
+        }
+
+        $procedures = DB::table('procedure_catalog')
+            ->whereIn('id', $procedureIds)
+            ->where('is_active', true)
+            ->lockForUpdate()
+            ->get(['id', 'name', 'price'])
+            ->keyBy('id');
+        $medicineIds = array_map(
+            static fn (array $item): int => (int) $item['medicine_id'],
+            $prescriptionItems,
+        );
+        $medicines = $medicineIds === []
+            ? collect()
+            : DB::table('medicine_catalog')
+                ->whereIn('id', $medicineIds)
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->get(['id', 'generic_name', 'strength', 'dosage_form', 'unit', 'price', 'price_is_estimate'])
+                ->keyBy('id');
+
+        if ($procedures->count() !== count($procedureIds) || $medicines->count() !== count($medicineIds)) {
+            throw ValidationException::withMessages([
+                'procedure_ids' => 'Ada tindakan atau obat yang sudah tidak tersedia pada katalog.',
+            ]);
+        }
+
+        $totalAmount = 0;
+
+        foreach ($procedureIds as $procedureId) {
+            $totalAmount += (int) $procedures->get((int) $procedureId)->price;
+        }
+
+        foreach ($prescriptionItems as $item) {
+            $medicine = $medicines->get((int) $item['medicine_id']);
+            $totalAmount += (int) $medicine->price * (int) $item['quantity'];
+        }
+
+        $now = now();
+        $billId = DB::table('bills')->insertGetId([
+            'bill_number' => 'INV-'.$now->format('Ymd').'-'.Str::upper(Str::random(8)),
+            'patient_id' => $patientId,
+            'total_amount' => $totalAmount,
+            'amount_paid' => 0,
+            'status' => 'Unpaid',
+            'created_by_user_id' => $userId,
+            'source_consultation_id' => $consultationId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        foreach ($procedureIds as $procedureId) {
+            $procedure = $procedures->get((int) $procedureId);
+
+            DB::table('bill_items')->insert([
+                'bill_id' => $billId,
+                'item_name' => $procedure->name,
+                'quantity' => 1,
+                'unit_price' => $procedure->price,
+                'procedure_catalog_id' => $procedure->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        if ($prescriptionItems !== []) {
+            $prescriptionId = DB::table('prescriptions')->insertGetId([
+                'consultation_id' => $consultationId,
+                'patient_id' => $patientId,
+                'doctor_id' => $doctorId,
+                'bill_id' => $billId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            foreach ($prescriptionItems as $item) {
+                $medicine = $medicines->get((int) $item['medicine_id']);
+                $medicineName = trim($medicine->generic_name.' '.($medicine->strength ?? '').' '.($medicine->dosage_form ?? ''));
+
+                DB::table('bill_items')->insert([
+                    'bill_id' => $billId,
+                    'item_name' => Str::limit(
+                        $medicineName.($medicine->price_is_estimate ? ' (harga estimasi)' : ''),
+                        150,
+                        '',
+                    ),
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $medicine->price,
+                    'medicine_catalog_id' => $medicine->id,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+                DB::table('prescription_items')->insert([
+                    'prescription_id' => $prescriptionId,
+                    'medicine_id' => $medicine->id,
+                    'medicine_name' => $medicine->generic_name,
+                    'strength' => $medicine->strength,
+                    'dosage_form' => $medicine->dosage_form,
+                    'unit' => $medicine->unit,
+                    'quantity' => $item['quantity'],
+                    'dosage' => trim($item['dosage']),
+                    'instructions' => trim($item['instructions']),
+                    'unit_price' => $medicine->price,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+        }
+
+        return true;
     }
 
     private function doctorId(Request $request): int

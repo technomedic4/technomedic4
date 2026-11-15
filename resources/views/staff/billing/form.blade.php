@@ -68,7 +68,7 @@
                         <div class="staff-panel-heading">
                             <div>
                                     <h2>Bukti tindakan dari perawat</h2>
-                                    <p>Tindakan dipilih sebagai dasar tagihan. Nominal diisi petugas billing yang berwenang, bukan perawat.</p>
+                                    <p>Keuangan dapat menghubungkan catatan perawat ke tarif tindakan resmi dari katalog database.</p>
                             </div>
                         </div>
                         @if ($nursingTreatments->isEmpty())
@@ -121,7 +121,6 @@
 
             list.querySelectorAll('[data-nursing-treatment-id]').forEach((input) => {
                 if (input.value !== '') {
-                    input.closest('.staff-billing-item-row').querySelector('[name$="[item_name]"]').readOnly = true;
                     const checkbox = document.querySelector(`[data-nursing-treatment][value="${input.value}"]`);
                     if (checkbox) {
                         checkbox.checked = false;
@@ -137,7 +136,7 @@
                 }
 
                 Array.from(list.children)
-                    .filter((row) => row.querySelector('[name$="[item_name]"]').value.trim() === ''
+                    .filter((row) => row.querySelector('[name$="[procedure_catalog_id]"]').value === ''
                         && row.querySelector('[data-nursing-treatment-id]').value === '')
                     .forEach((row) => row.remove());
                 let nextIndex = Array.from(list.children).reduce(
@@ -154,9 +153,8 @@
                     const wrapper = document.createElement('div');
                     wrapper.innerHTML = template.innerHTML.replace(/__INDEX__/g, String(nextIndex++));
                     const row = wrapper.firstElementChild;
-                    row.querySelector('[name$="[item_name]"]').value = checkbox.dataset.treatmentName;
-                    row.querySelector('[name$="[item_name]"]').readOnly = true;
                     row.querySelector('[data-nursing-treatment-id]').value = itemId;
+                    row.querySelector('[data-nursing-treatment-label]').textContent = checkbox.dataset.treatmentName;
                     list.appendChild(row);
                     checkbox.checked = false;
                     checkbox.disabled = true;

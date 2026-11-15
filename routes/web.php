@@ -8,6 +8,7 @@ use App\Http\Controllers\Staff\InpatientAdmissionController;
 use App\Http\Controllers\Staff\MedicalRecordController;
 use App\Http\Controllers\Staff\NurseManagementController;
 use App\Http\Controllers\Staff\NursingController;
+use App\Http\Controllers\Staff\PharmacyController;
 use App\Http\Controllers\Staff\ReceptionController;
 use App\Http\Controllers\StaffDashboardController;
 use App\Http\Controllers\TeleconsultationController;
@@ -45,6 +46,16 @@ Route::middleware(['auth', 'staff'])
     ->name('staff.')
     ->group(function (): void {
         Route::get('/', StaffDashboardController::class)->name('dashboard');
+
+        Route::middleware('staff-role:Farmasi')
+            ->prefix('pharmacy')
+            ->name('pharmacy.')
+            ->group(function (): void {
+                Route::get('/', [PharmacyController::class, 'index'])->name('index');
+                Route::post('/prescriptions/{prescription}/dispense', [PharmacyController::class, 'dispense'])
+                    ->whereNumber('prescription')
+                    ->name('prescriptions.dispense');
+            });
 
         Route::middleware('staff-role:Dokter')
             ->prefix('doctor')
@@ -92,17 +103,23 @@ Route::middleware(['auth', 'staff'])
             ->name('billing.')
             ->group(function (): void {
                 Route::get('/', [BillingController::class, 'index'])->name('index');
-                Route::get('/create', [BillingController::class, 'create'])->name('create');
-                Route::post('/', [BillingController::class, 'store'])->name('store');
                 Route::get('/{bill}', [BillingController::class, 'show'])->whereNumber('bill')->name('show');
-                Route::get('/{bill}/edit', [BillingController::class, 'edit'])->whereNumber('bill')->name('edit');
-                Route::put('/{bill}', [BillingController::class, 'update'])->whereNumber('bill')->name('update');
-                Route::delete('/{bill}', [BillingController::class, 'destroy'])->whereNumber('bill')->name('destroy');
-                Route::post('/{bill}/payments', [BillingController::class, 'recordPayment'])->whereNumber('bill')->name('payments.store');
                 Route::get('/{bill}/payment-submissions/{submission}/proof', [BillingController::class, 'paymentProof'])
                     ->whereNumber('bill')
                     ->whereNumber('submission')
                     ->name('payment-submissions.proof');
+            });
+
+        Route::middleware('staff-role:Keuangan,Admin')
+            ->prefix('billing')
+            ->name('billing.')
+            ->group(function (): void {
+                Route::get('/create', [BillingController::class, 'create'])->name('create');
+                Route::post('/', [BillingController::class, 'store'])->name('store');
+                Route::get('/{bill}/edit', [BillingController::class, 'edit'])->whereNumber('bill')->name('edit');
+                Route::put('/{bill}', [BillingController::class, 'update'])->whereNumber('bill')->name('update');
+                Route::delete('/{bill}', [BillingController::class, 'destroy'])->whereNumber('bill')->name('destroy');
+                Route::post('/{bill}/payments', [BillingController::class, 'recordPayment'])->whereNumber('bill')->name('payments.store');
                 Route::post('/{bill}/payment-submissions/{submission}/review', [BillingController::class, 'reviewPaymentSubmission'])
                     ->whereNumber('bill')
                     ->whereNumber('submission')

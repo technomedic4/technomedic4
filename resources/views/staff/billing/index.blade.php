@@ -14,7 +14,9 @@
             <div class="staff-content">
                 <section class="staff-page-heading">
                     <div><p class="staff-eyebrow">BILLING & PEMBAYARAN</p><h1>Tagihan pasien</h1><p>Kelola rincian biaya dan catat pembayaran pasien.</p></div>
-                    <a class="staff-action-button staff-button-link" href="{{ route('staff.billing.create') }}">+ Buat tagihan</a>
+                    @if (in_array($roleLabel, ['Keuangan', 'Admin'], true))
+                        <a class="staff-action-button staff-button-link" href="{{ route('staff.billing.create') }}">+ Buat tagihan</a>
+                    @endif
                 </section>
 
                 @if (session('success'))<div class="staff-alert staff-alert-success" role="status">{{ session('success') }}</div>@endif
